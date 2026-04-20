@@ -43,7 +43,7 @@ async def save_collection(coll: CollectionUpdate):
     await database.execute(stmt)
     return {"success": True}
 
-@router.delete("/")
+@router.delete("")
 async def remove_collection(user_id: str, anilistId: str):
     stmt = delete(collections).where((collections.c.userId == user_id) & (collections.c.animeSlug == anilistId))
     await database.execute(stmt)

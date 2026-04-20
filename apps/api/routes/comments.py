@@ -22,7 +22,7 @@ class CommentReaction(BaseModel):
     comment_id: int
     emoji: str # e.g., "like", "love", "laugh"
 
-@router.get("/")
+@router.get("")
 async def get_comments(anilistId: int, episodeNumber: float, user_id: Optional[str] = None):
     # Fetch comments for an episode
     query = """
