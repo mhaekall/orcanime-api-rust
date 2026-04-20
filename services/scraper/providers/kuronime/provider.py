@@ -82,23 +82,22 @@ class KuronimeProvider(BaseProvider):
                 try:
                     # Kadang kuronime mereturn string langsung (URL) bukannya JSON, mari kita handle
                     if decrypted_str.startswith("http"):
-                        sources.append({
-                            "provider": "KuroPlayer",
-                            "quality": quality,
-                            "url": decrypted_str,
-                            "type": "direct" if decrypted_str.endswith((".mp4", ".m3u8")) else "iframe"
-                        })
+                        # Skip KuroPlayer temporarily
+                        pass
+                        # sources.append({
+                        #     "provider": "KuroPlayer",
+                        #     "quality": quality,
+                        #     "url": decrypted_str,
+                        #     "type": "direct"
+                        # })
                     else:
                         decrypted_json = json.loads(decrypted_str)
                         src_url = decrypted_json.get("src")
                         print(f"[Kuronime Debug] Found src_url: {src_url}")
                         if src_url:
-                            sources.append({
-                                "provider": "KuroPlayer",
-                                "quality": quality,
-                                "url": src_url,
-                                "type": "direct" if src_url.endswith((".mp4", ".m3u8")) else "iframe"
-                            })
+                            # KuroPlayer direct urls currently return 404, so we skip them
+                            # instead of falling back to iframe as per user request.
+                            pass
                 except Exception as e:
                     print(f"[Kuronime Debug] Parsing error for {q_key}: {e}")
                     pass

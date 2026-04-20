@@ -14,7 +14,7 @@ class CollectionUpdate(BaseModel):
     status: str
     progress: float = 0
 
-@router.get("/")
+@router.get("")
 async def get_collection(user_id: str):
     query = select(
         collections,

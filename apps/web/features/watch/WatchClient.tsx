@@ -241,7 +241,7 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
           <h1 className="text-white font-black text-xl md:text-2xl leading-tight line-clamp-2">{title}</h1>
           <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
             <div className="flex items-center gap-3">
-              <span className="text-[#8e8e93] font-medium text-sm">{views}K views</span>
+              <span className="text-[#8e8e93] font-medium text-sm">{realViews > 1000 ? (realViews/1000).toFixed(1) + 'K' : realViews} views</span>
               <span className="w-1 h-1 rounded-full bg-[#8e8e93]" />
               <span className="text-[#0a84ff] font-bold text-sm bg-[#0a84ff]/10 px-2 py-0.5 rounded-md">Episode {activeEpisode}</span>
             </div>

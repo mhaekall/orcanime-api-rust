@@ -34,22 +34,47 @@ PROVIDER_ID = "kuronime"
 
 
 async def fetch_unmapped_slugs(limit: int | None = None) -> list[dict]:
-    """Return Kuronime slugs that have no entry in anime_mappings."""
-    query = """
-        SELECT DISTINCT p."providerSlug", p."rawTitle"
-        FROM provider_catalog p
-        LEFT JOIN anime_mappings m
-            ON m."providerId" = p."providerId"
-           AND m."providerSlug" = p."providerSlug"
-        WHERE p."providerId" = :pid
-          AND m."anilistId" IS NULL
-        ORDER BY p."providerSlug"
-    """
+    """Fetch recent anime from Kuronime provider and filter out those already mapped."""
+    from services.providers import kuronime_provider
+    
+    slugs_to_process = []
+                
+    # Also we want Dan Da Dan and One Piece explicitly
+    search_queries = ["one piece", "dan da dan", "naruto", "bleach", "jujutsu kaisen"]
+    for query in search_queries:
+        print(f"[ForceSyncKuronime] Searching for '{query}'...")
+        try:
+            results = await kuronime_provider.search(query)
+            for item in results:
+                url = item.get('url', '')
+                if url:
+                    slug = url.strip('/').split('/')[-1]
+                    slugs_to_process.append({"providerSlug": slug, "rawTitle": item.get('title')})
+        except Exception as e:
+            print(f"[ForceSyncKuronime] Error searching '{query}': {e}")
+                
+    # Deduplicate
+    unique_slugs = {}
+    for item in slugs_to_process:
+        unique_slugs[item["providerSlug"]] = item
+    
+    slugs_to_process = list(unique_slugs.values())
+    
+    # Filter out already mapped
+    unmapped = []
+    for item in slugs_to_process:
+        slug = item["providerSlug"]
+        row = await database.fetch_one(
+            'SELECT "anilistId" FROM anime_mappings WHERE "providerId" = :pid AND "providerSlug" = :slug',
+            {"pid": PROVIDER_ID, "slug": slug}
+        )
+        if not row:
+            unmapped.append(item)
+            
     if limit:
-        query += f" LIMIT {int(limit)}"
-
-    rows = await database.fetch_all(query, {"pid": PROVIDER_ID})
-    return [dict(r) for r in rows]
+        unmapped = unmapped[:limit]
+        
+    return unmapped
 
 
 async def upsert_mapping(provider_slug: str, anilist_id: int) -> None:

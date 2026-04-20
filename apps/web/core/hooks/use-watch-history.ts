@@ -110,6 +110,8 @@ export function useWatchHistory(userId?: string) {
         return copy.slice(0, 30);
       };
 
+      saveLocal(next(display));
+
       await mutate(
         async (current) => {
           try {
