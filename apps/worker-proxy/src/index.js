@@ -55,20 +55,26 @@ export default {
 
       // 2. Setup caching logic
       const cache = caches.default;
-      const cacheKey = new Request(url.toString(), request);
       
-      // Check cache first (ignore Range for initial cache check if possible, or cache full object)
-      // Since video segments (.ts) are usually requested whole, caching the full response is safe.
-      // For range requests on mp4, Cloudflare handles range requests against cached full objects automatically.
+      // Create a cache key without the Range header to ensure we match the full cached object
+      const cacheKey = new Request(url.toString(), request);
+      cacheKey.headers.delete("Range");
+      
       let response = await cache.match(cacheKey);
 
       if (!response) {
         const tgDownloadUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`;
 
+        const originalName = url.searchParams.get('name') || '';
+        const isHLS = filePath.endsWith('.ts') || filePath.endsWith('.m3u8') || originalName.endsWith('.ts') || originalName.endsWith('.m3u8');
+
         // Fetch from Telegram
         const fetchHeaders = new Headers();
         const range = request.headers.get("Range");
-        if (range) {
+        
+        // Only forward Range header for non-HLS (like MP4s). 
+        // For HLS segments, force fetch the full file so we can cache a 200 OK.
+        if (range && !isHLS) {
           fetchHeaders.set("Range", range);
         }
 
@@ -87,7 +93,6 @@ export default {
         // Cache for 1 year (31536000 seconds) since Telegram files are immutable
         responseHeaders.set('Cache-Control', 'public, max-age=31536000');
 
-        const originalName = url.searchParams.get('name') || '';
         if (filePath.endsWith('.ts') || originalName.endsWith('.ts')) {
           responseHeaders.set('Content-Type', 'video/mp2t');
         } else if (filePath.endsWith('.m3u8') || originalName.endsWith('.m3u8')) {

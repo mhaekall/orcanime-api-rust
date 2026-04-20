@@ -14,7 +14,7 @@ if db_url and db_url.startswith("postgresql://"):
 
 from db.connection import database as db
 from services.ingestion.main import IngestionEngine
-from apps.api.services.stream_cache import get_cached_stream
+from services.stream_cache import get_cached_stream
 
 async def ingest_pending(limit: int):
     print(f"🚀 Memulai GitHub Actions Worker: Mencari maksimal {limit} episode tertunda...")
