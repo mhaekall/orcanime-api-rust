@@ -139,43 +139,13 @@ async def ingest_webhook(request: Request):
         print(f"[Webhook] Error processing ingestion payload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-async def _run_ingest_batch_bg():
-    try:
-        import os
-        print("[Webhook] Running batch ingestion worker in background...")
-        import asyncio.subprocess
-        
-        env = os.environ.copy()
-        # Add apps/api to PYTHONPATH so absolute imports like `from db.connection...` resolve properly
-        api_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{api_dir}".strip(":")
-        
-        script_path = os.path.join(api_dir, "scripts", "ingest_pending.py")
-        
-        process = await asyncio.create_subprocess_exec(
-            "python", script_path, "--limit", "10",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env
-        )
-        stdout, stderr = await process.communicate()
-        if process.returncode != 0:
-            print(f"[Webhook] Batch ingestion worker failed with code {process.returncode}")
-            if stderr:
-                print(f"[Webhook] Error: {stderr.decode()}")
-        else:
-            print(f"[Webhook] Batch ingestion worker finished successfully.")
-            if stdout:
-                print(f"[Webhook] Output: {stdout.decode()}")
-    except Exception as e:
-        print(f"[Webhook] Batch ingestion worker crashed: {e}")
-
 @router.post("/webhook/ingest-batch")
 async def ingest_batch_webhook(request: Request):
     await _verify_qstash(request)
     try:
         print("[Webhook] Executing Batch Ingestion Trigger")
-        asyncio.create_task(_run_ingest_batch_bg())
+        from services.queue import QStashPublisher
+        QStashPublisher.spawn_batch_worker()
         return Response(status_code=200, content="Batch Ingestion Queued")
     except Exception as e:
         print(f"[Webhook] Error processing batch ingestion payload: {e}")

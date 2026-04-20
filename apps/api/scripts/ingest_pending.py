@@ -8,9 +8,6 @@ API_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, API_DIR)
 
 load_dotenv(os.path.join(API_DIR, ".env"))
-db_url = os.getenv("DATABASE_URL")
-if db_url and db_url.startswith("postgresql://"):
-    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 from db.connection import database as db
 from services.ingestion.main import IngestionEngine
@@ -18,9 +15,11 @@ from services.stream_cache import get_cached_stream
 
 async def ingest_pending(limit: int):
     print(f"🚀 Memulai GitHub Actions Worker: Mencari maksimal {limit} episode tertunda...")
+    
+    # Pastikan database terkoneksi sebelum dipakai di query dan get_cached_stream
     if not db.is_connected:
         await db.connect()
-    
+        
     # Cari episode yang URL-nya belum tg-proxy
     query = """
         SELECT id, "anilistId", "episodeNumber", "episodeUrl" 

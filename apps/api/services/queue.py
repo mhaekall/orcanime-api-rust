@@ -87,6 +87,26 @@ class QStashPublisher:
                 print(f"[QStash] Exception publishing ingest to QStash: {e}")
 
     @staticmethod
+    def spawn_batch_worker():
+        import subprocess
+        import os
+        print("[Queue] Spawning batch ingestion subprocess...")
+        api_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        script_path = os.path.join(api_dir, "scripts", "ingest_pending.py")
+        env = os.environ.copy()
+        env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{api_dir}".strip(":")
+        
+        # Fire and forget subprocess
+        log_file = open(os.path.join(api_dir, "ingest_worker.log"), "a")
+        subprocess.Popen(
+            ["python", script_path, "--limit", "10"],
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True
+        )
+
+    @staticmethod
     async def publish_ingest_batch_task():
         # Deduplication: Prevent redundant batch triggers within 15 minutes (900s)
         from services.cache import upstash_set
@@ -104,9 +124,7 @@ class QStashPublisher:
         # Direct Background Execution (Bypasses QStash)
         # Because we are already running on the HF Space FastAPI, we can just spawn a task!
         print("[Queue] Spawning background batch ingestion directly...")
-        import asyncio
-        from routes.webhook import _run_ingest_batch_bg
-        asyncio.create_task(_run_ingest_batch_bg())
+        QStashPublisher.spawn_batch_worker()
 
 enqueue_sync = QStashPublisher.publish_sync_task
 enqueue_ingest = QStashPublisher.publish_ingest_task
