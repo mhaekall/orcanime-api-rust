@@ -4,7 +4,7 @@ import useSWR from "swr";
 import { useCallback, useEffect, useState } from "react";
 import { WatchlistItem } from "@/core/stores/app-store"; // Keep the interface from there for now
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/v2/collection/` : "https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/collection/";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/v2/collection` : "https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/collection";
 const LOCAL_KEY = "ani-collection-v3";
 const SYNC_QUEUE_KEY = "ani-sync-queue";
 
@@ -196,6 +196,8 @@ export function useCollection(userId?: string) {
         else copy.unshift(enriched as WatchlistItem);
         return copy;
       };
+      
+      saveLocal(next(display));
 
       await mutate(
         async (current) => {
@@ -234,6 +236,8 @@ export function useCollection(userId?: string) {
       }
 
       const next = (prev: WatchlistItem[] = []) => prev.filter((h) => String(h.id) !== String(id));
+
+      saveLocal(next(display));
 
       await mutate(
         async (current) => {

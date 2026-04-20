@@ -31,7 +31,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </Navigation>
         <Toaster />
         <InstallPrompt />
+        <PwaUpdater />
       </body>
+    </html>
+  );
+}
+     </body>
     </html>
   );
 }
