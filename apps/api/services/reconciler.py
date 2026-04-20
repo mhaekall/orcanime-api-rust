@@ -88,6 +88,36 @@ class GeminiMatcher:
         return cls._client
 
     @classmethod
+    async def guess_clean_title(cls, dirty_title: str) -> str:
+        """
+        Ask Gemini to infer the canonical anime title from a dirty slug/string.
+        Returns the guessed title, or empty string on failure.
+        """
+        prompt = (
+            "You are an anime expert. Given a messy provider slug or dirty title, "
+            "return ONLY the canonical anime title in romaji — no explanation, no markdown.\n\n"
+            f"Input: \"{dirty_title}\"\n"
+            "Output (title only):"
+        )
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 40, "temperature": 0},
+        }
+        try:
+            r = await cls._get_client().post(GEMINI_ENDPOINT, json=payload)
+            raw = r.json()
+            text = (
+                raw.get("candidates", [{}])[0]
+                   .get("content", {})
+                   .get("parts", [{}])[0]
+                   .get("text", "")
+            )
+            return text.strip().strip('"').strip("'")
+        except Exception as e:
+            print(f"[Gemini] guess_clean_title error: {e}")
+            return ""
+
+    @classmethod
     async def is_same_anime(
         cls,
         provider_title: str,
@@ -211,8 +241,25 @@ class AnimeReconciler:
             raw_title=raw_title,
         )
 
+        # ── Step 1: Try AniList with raw_title directly ──────────────────────
         anilist_data = await fetch_anilist_info(raw_title)
+
+        # ── Step 2: If failed, sanitize slug and retry ────────────────────────
         if not anilist_data:
+            sanitized = sanitize_slug_title(raw_title)
+            if sanitized and sanitized != raw_title:
+                print(f"[Reconciler] AniList miss for '{raw_title}', retrying sanitized: '{sanitized}'")
+                anilist_data = await fetch_anilist_info(sanitized)
+
+        # ── Step 3: Still failed → ask Gemini to guess the real title ─────────
+        if not anilist_data:
+            guessed_title = await GeminiMatcher.guess_clean_title(raw_title)
+            if guessed_title:
+                print(f"[Reconciler] Gemini guessed '{guessed_title}' for slug '{raw_title}'")
+                anilist_data = await fetch_anilist_info(guessed_title)
+
+        if not anilist_data:
+            print(f"[Reconciler] All strategies exhausted for '{raw_title}' — giving up.")
             return None
 
         new_id    = anilist_data["anilistId"]
@@ -347,5 +394,35 @@ def _normalize(title: str) -> str:
     t = re.sub(r"\b(the|a|an)\b", "", t)
     t = re.sub(r"[^a-z0-9\s]", " ", t)
     return re.sub(r"\s+", " ", t).strip()
+
+
+# Noise words commonly appended by Kuronime and similar providers
+_SLUG_NOISE_WORDS = re.compile(
+    r"\b(op|ed|ost|ova|ona|movie|film|special|sub|indo|batch|"
+    r"episode|eps?|season|part|the|and|of|wa|no|wo|ni|ga|to)\b",
+    re.IGNORECASE,
+)
+
+def sanitize_slug_title(raw: str) -> str:
+    """
+    Convert a provider slug/dirty title into a clean search query.
+
+    Examples:
+      'one-piece-op'      → 'one piece'
+      'dan-da-dan'        → 'dan da dan'
+      'shingeki-no-kyojin-s4-part2' → 'shingeki kyojin s4 part2'
+      'bleach-tybw-episode-1' → 'bleach tybw'
+    """
+    t = str(raw).lower().strip()
+    # Replace hyphens and underscores with spaces
+    t = re.sub(r"[-_]+", " ", t)
+    # Strip trailing episode/number noise like "episode 12", "ep 5", etc.
+    t = re.sub(r"\bepisode?\s*\d+\b", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\beps?\s*\d+\b", "", t, flags=re.IGNORECASE)
+    # Remove standalone noise words
+    t = _SLUG_NOISE_WORDS.sub(" ", t)
+    # Collapse whitespace
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
 
 reconciler = AnimeReconciler()
