@@ -111,7 +111,8 @@ class IngestionEngine:
             logger.error(f"Database update failed: {e}")
             return False
         finally:
-            ping_task.cancel()
+            if ping_task and not ping_task.done():
+                ping_task.cancel()
             try:
                 if 'should_disconnect' in locals() and should_disconnect:
                     await database.disconnect()
@@ -161,3 +162,4 @@ if __name__ == "__main__":
         await database.disconnect()
         
     asyncio.run(run_test())
+test())

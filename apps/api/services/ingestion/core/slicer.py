@@ -20,13 +20,16 @@ class VideoSlicer:
         os.makedirs(hls_dir, exist_ok=True)
 
         master_playlist = os.path.join(hls_dir, "index.m3u8")
-        logger.info(f"🚀 [Ep 23 TEST] Slicing with Subtitle Mapping from {url}...")
+        logger.info(f"🚀 Slicing with Subtitle Mapping from {url}...")
 
         try:
+            from urllib.parse import urlparse
+            referer = f"https://{urlparse(url).netloc}/"
+
             # Perintah FFmpeg sakti: Copy Video & Audio (Cepat), tapi Map Subtitle ke format HLS
             command = [
                 "ffmpeg", "-y",
-                "-headers", "Referer: https://pixeldrain.com/\r\n",
+                "-headers", f"Referer: {referer}\r\n",
                 "-i", url,
                 "-map", "0:v:0", "-map", "0:a:0", "-map", "0:s:0?", # Ambil Video, Audio, dan Teks pertama
                 "-c:v", "copy", "-c:a", "copy", "-c:s", "webvtt", # WebVTT adalah standar HLS
@@ -41,7 +44,7 @@ class VideoSlicer:
             stdout, stderr = await process.communicate()
 
             if os.path.exists(master_playlist) and os.path.getsize(master_playlist) > 0:
-                logger.info(f"✅ Berhasil memotong Ep 23 dengan Subtitle!")
+                logger.info(f"✅ Berhasil memotong video dengan Subtitle!")
                 return master_playlist
             
             logger.error(f"FFmpeg Error: {stderr.decode()}")

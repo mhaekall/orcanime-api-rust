@@ -26,7 +26,8 @@ async def ingest_pending(limit: int):
         SELECT id, "anilistId", "episodeNumber", "episodeUrl" 
         FROM episodes 
         WHERE "episodeUrl" NOT LIKE '%tg-proxy%' 
-        AND "episodeUrl" != ''
+        AND "episodeUrl" NOT LIKE '%workers.dev%'
+        AND "episodeUrl" LIKE 'http%'
         ORDER BY "updatedAt" DESC 
         LIMIT :limit
     """
