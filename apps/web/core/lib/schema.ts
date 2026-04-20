@@ -50,15 +50,10 @@ export const watchHistory = pgTable("watch_history", {
   id: serial("id").primaryKey(),
   userId: text("userId").notNull().references(() => user.id, { onDelete: "cascade" }),
   animeSlug: text("animeSlug").notNull(),
-  animeTitle: text("animeTitle").notNull(),
-  animeCover: text("animeCover"),
   episode: integer("episode").notNull(),
-  episodeTitle: text("episodeTitle"),
   timestampSec: integer("timestampSec").notNull().default(0),
   durationSec: integer("durationSec").notNull().default(0),
   completed: boolean("completed").notNull().default(false),
-  source: text("source").default("oploverz"),
-  quality: text("quality").default("720p"),
   updatedAt: timestamp("updatedAt").notNull()
 }, (table) => ({
   unq: unique().on(table.userId, table.animeSlug, table.episode),

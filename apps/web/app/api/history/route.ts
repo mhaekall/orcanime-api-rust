@@ -40,7 +40,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { animeSlug, animeTitle, animeCover, episode, episodeTitle, timestampSec, durationSec, completed, source, quality } = body;
+    const { animeSlug, episode, timestampSec, durationSec, completed } = body;
 
     if (!animeSlug || episode === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -49,15 +49,10 @@ export async function POST(req: Request) {
     const newRecord = await db.insert(watchHistory).values({
       userId: session.user.id,
       animeSlug,
-      animeTitle,
-      animeCover,
       episode,
-      episodeTitle,
       timestampSec: timestampSec || 0,
       durationSec: durationSec || 0,
       completed: completed || false,
-      source: source || "default",
-      quality: quality || "auto",
       updatedAt: new Date()
     }).onConflictDoUpdate({
       target: [watchHistory.userId, watchHistory.animeSlug, watchHistory.episode],
