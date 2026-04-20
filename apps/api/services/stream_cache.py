@@ -382,7 +382,7 @@ async def _live_scrape(episode_url: str, provider_id: str) -> Optional[CachedPay
             or ".m3u8"                        in resolved_lower
         )
         video_type = (
-            "hls" if (".m3u8" in resolved_lower or "kuroplayer" in resolved_lower)
+            "hls" if ".m3u8" in resolved_lower
             else ("mp4" if is_direct else "iframe")
         )
         final_url = resolved if is_direct else raw_url
@@ -938,7 +938,7 @@ async def get_cached_stream(
     # Ambil semua candidate episodes dari DB, sorted by provider priority
     rows = await database.fetch_all(
         """
-        SELECT id, "episodeUrl", "providerId"
+        SELECT id, "episodeUrl", "providerId", "episodeNumber"
         FROM   episodes
         WHERE  "anilistId" = :aid AND "episodeNumber" = :ep
         ORDER BY
