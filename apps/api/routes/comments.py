@@ -65,7 +65,6 @@ async def post_comment(comment: CommentCreate):
         episodeNumber=comment.episodeNumber,
         text=comment.text,
         parent_id=comment.parent_id,
-        is_spoiler=comment.is_spoiler,
         timestamp_sec=comment.timestamp_sec
     ).returning(comments.c.id)
     
