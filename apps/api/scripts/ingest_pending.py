@@ -4,10 +4,10 @@ import sys
 import argparse
 from dotenv import load_dotenv
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, ROOT_DIR)
+API_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, API_DIR)
 
-load_dotenv(os.path.join(ROOT_DIR, "apps/api/.env"))
+load_dotenv(os.path.join(API_DIR, ".env"))
 db_url = os.getenv("DATABASE_URL")
 if db_url and db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
@@ -49,8 +49,29 @@ async def ingest_pending(limit: int):
         
         sources_response = await get_cached_stream(aid, ep_num)
         if sources_response and "sources" in sources_response and len(sources_response["sources"]) > 0:
-            direct_url = sources_response["sources"][0].get("url", "")
-            provider_id = sources_response["sources"][0].get("source", "unknown")
+            direct_url = ""
+            provider_id = "unknown"
+            
+            # Prioritize 720p
+            for s in sources_response["sources"]:
+                if s.get("quality") == "720p" and s.get("type") in ["mp4", "direct", "hls"]:
+                    direct_url = s.get("url", "")
+                    provider_id = s.get("source", "unknown")
+                    break
+            
+            # Fallback to first available direct stream if 720p not found
+            if not direct_url:
+                for s in sources_response["sources"]:
+                    if s.get("type") in ["mp4", "direct", "hls"]:
+                        direct_url = s.get("url", "")
+                        provider_id = s.get("source", "unknown")
+                        break
+            
+            # If still nothing, just grab the first one (though it might be iframe)
+            if not direct_url:
+                direct_url = sources_response["sources"][0].get("url", "")
+                provider_id = sources_response["sources"][0].get("source", "unknown")
+                
             print(f"Direct URL found: {direct_url[:50]}...")
             
             if direct_url and "tg-proxy" not in direct_url:
