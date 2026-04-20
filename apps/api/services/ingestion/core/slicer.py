@@ -29,7 +29,6 @@ class VideoSlicer:
             # Perintah FFmpeg sakti: Copy Video & Audio (Cepat), tapi Map Subtitle ke format HLS
             command = [
                 "ffmpeg", "-y",
-                "-headers", f"Referer: {referer}\r\n",
                 "-i", url,
                 "-map", "0:v:0", "-map", "0:a:0", "-map", "0:s:0?", # Ambil Video, Audio, dan Teks pertama
                 "-c:v", "copy", "-c:a", "copy", "-c:s", "webvtt", # WebVTT adalah standar HLS
