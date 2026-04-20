@@ -91,8 +91,18 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
     { revalidateOnFocus: false }
   );
 
+  const { data: animeStats } = useSWR(
+    mounted ? `https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/social/anime/${id}/stats` : null,
+    async (url) => {
+      const res = await fetch(url);
+      return res.json();
+    },
+    { revalidateOnFocus: false }
+  );
+
   const realLikes = epStats?.likes || 0;
   const isLiked = epStats?.user_liked || false;
+  const realViews = animeStats?.total_episode_views || 0;
 
   useEffect(() => {
     if (!mounted || !session?.user?.id) return;
@@ -328,7 +338,7 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
         {/* Comments Section (YouTube Style) */}
         <div className="pt-4 border-t border-[#2c2c2e]/50">
           <h3 className="text-white font-bold text-base md:text-lg mb-4 tracking-tight">Komentar</h3>
-          <CommentSection anilistId={id} episode={activeEpisode} currentTime={currentTime} onSeek={handleSeek} />
+          <CommentSection anilistId={id} episode={activeEpisode} currentTime={currentTime} onSeek={handleSeek} user={session?.user} />
         </div>
 
         {/* Recommendations (Horizontal Scroll) */}

@@ -24,6 +24,7 @@ interface Props {
   episode: string;
   currentTime: number;
   onSeek: (time: number) => void;
+  user?: { id: string; name: string; image?: string | null } | null;
 }
 
 const IconClose = () => (
@@ -35,18 +36,13 @@ const IconHeart = ({ filled }: { filled?: boolean }) => (
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-export function CommentSection({ anilistId, episode, currentTime, onSeek }: Props) {
+export function CommentSection({ anilistId, episode, currentTime, onSeek, user }: Props) {
   const [sortBy, setSortBy] = useState<"top" | "newest">("top");
   const [isMainModalOpen, setIsMainModalOpen] = useState(false);
   const [activeThread, setActiveThread] = useState<Comment | null>(null);
   const [mounted, setMounted] = useState(false);
 
-  const [userId] = useState(() => {
-    if (typeof window === 'undefined') return 'ssr';
-    let id = localStorage.getItem('anon_user_id') || 'anon_' + Math.floor(Math.random() * 1000000);
-    localStorage.setItem('anon_user_id', id);
-    return id;
-  });
+  const userId = user?.id;
 
   // Use SWR for real-time sync (auto-revalidate every 15s)
   const { data: allComments = [], isLoading } = useSWR(
@@ -60,7 +56,7 @@ export function CommentSection({ anilistId, episode, currentTime, onSeek }: Prop
   const comments = Array.isArray(allComments) ? allComments.filter((c: any) => !c.parent_id) : [];
 
   const handleSubmit = async (text: string, parentId?: number) => {
-    if (!text.trim()) return;
+    if (!text.trim() || !userId) return;
     try {
       const res = await fetch(`${API}/api/v2/social/comments`, {
         method: "POST",
@@ -75,6 +71,10 @@ export function CommentSection({ anilistId, episode, currentTime, onSeek }: Prop
   };
 
   const handleLike = async (commentId: number) => {
+    if (!userId) {
+      alert("Silakan login untuk menyukai komentar.");
+      return;
+    }
     try {
       await fetch(`${API}/api/v2/social/reactions`, {
         method: "POST",
