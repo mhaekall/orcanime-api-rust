@@ -3,7 +3,7 @@ import logging
 from sqlalchemy import select, and_, func
 from db.connection import database
 from db.models import anime_metadata, episodes
-from services.queue import enqueue_sync, enqueue_ingest
+from services.queue import enqueue_sync, enqueue_ingest_batch
 from services.pipeline import resolve_episode_sources
 
 logger = logging.getLogger(__name__)
@@ -77,30 +77,11 @@ async def smart_prefetch_episodes():
         '''
         un_ingested_eps = await database.fetch_all(un_ingested_query, values={"anime_ids": anime_ids})
         
-        queued_count = 0
-        for ep in un_ingested_eps:
-            ep_url = ep["episodeUrl"]
-            provider_id = ep["providerId"]
+        queued_count = len(un_ingested_eps)
+        if queued_count > 0:
+            await enqueue_ingest_batch()
             
-            # Kita perlu mendapatkan URL direct-nya untuk di-ingest
-            result = await resolve_episode_sources(ep_url, provider_id)
-            if result and result.get("sources"):
-                direct_sources = [s for s in result["sources"] if s.get("type") in ("direct", "mp4", "hls")]
-                if direct_sources:
-                    best_source = direct_sources[0]
-                    raw_direct_url = best_source.get("raw_url") or best_source.get("url")
-                    
-                    if "workers.dev" not in raw_direct_url and "tg-proxy" not in raw_direct_url:
-                        await enqueue_ingest(
-                            episode_id=ep["id"],
-                            anilist_id=ep["anilistId"],
-                            provider_id=provider_id,
-                            episode_number=ep["episodeNumber"],
-                            direct_url=raw_direct_url
-                        )
-                        queued_count += 1
-        
-        logger.info(f"[Prefetch] Successfully queued {queued_count} episodes for Telegram Swarm Ingestion.")
+        logger.info(f"[Prefetch] Successfully queued batch ingest trigger for {queued_count} episodes.")
         return {"status": "success", "queued_ingestions": queued_count, "synced_anime": len(anime_ids)}
         
     except Exception as e:

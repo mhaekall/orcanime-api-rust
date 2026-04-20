@@ -2,7 +2,7 @@ name: Background Ingestion Worker
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Setiap 6 jam
+    - cron: '0 */12 * * *'  # Setiap 12 jam
   workflow_dispatch:
 
 jobs:

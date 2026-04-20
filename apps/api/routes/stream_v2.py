@@ -385,14 +385,8 @@ async def get_sources_v2(
                     values={"aid": anilist_id, "ep": float(ep)}
                 )
                 if row:
-                    from services.queue import enqueue_ingest
-                    asyncio.create_task(enqueue_ingest(
-                        episode_id=row["id"],
-                        anilist_id=anilist_id,
-                        provider_id=best.get('source', 'unknown'),
-                        episode_number=float(ep),
-                        direct_url=raw_url
-                    ))
+                    from services.queue import enqueue_ingest_batch
+                    asyncio.create_task(enqueue_ingest_batch())
             except Exception as e:
                 print(f"[StreamV2] Ingestion Trigger Error: {e}")
 

@@ -139,6 +139,38 @@ async def ingest_webhook(request: Request):
         print(f"[Webhook] Error processing ingestion payload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def _run_ingest_batch_bg():
+    try:
+        print("[Webhook] Running batch ingestion worker in background...")
+        import asyncio.subprocess
+        process = await asyncio.create_subprocess_exec(
+            "python", "apps/api/scripts/ingest_pending.py", "--limit", "10",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            print(f"[Webhook] Batch ingestion worker failed with code {process.returncode}")
+            if stderr:
+                print(f"[Webhook] Error: {stderr.decode()}")
+        else:
+            print(f"[Webhook] Batch ingestion worker finished successfully.")
+            if stdout:
+                print(f"[Webhook] Output: {stdout.decode()}")
+    except Exception as e:
+        print(f"[Webhook] Batch ingestion worker crashed: {e}")
+
+@router.post("/webhook/ingest-batch")
+async def ingest_batch_webhook(request: Request):
+    await _verify_qstash(request)
+    try:
+        print("[Webhook] Executing Batch Ingestion Trigger")
+        asyncio.create_task(_run_ingest_batch_bg())
+        return Response(status_code=200, content="Batch Ingestion Queued")
+    except Exception as e:
+        print(f"[Webhook] Error processing batch ingestion payload: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/webhook/triage")
 async def triage_webhook(request: Request):
     await _verify_qstash(request)

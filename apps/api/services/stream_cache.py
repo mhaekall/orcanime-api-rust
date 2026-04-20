@@ -967,14 +967,8 @@ async def get_cached_stream(
             if direct:
                 raw_url = direct[0].get("raw_url") or direct[0].get("url", "")
                 if raw_url and "workers.dev" not in raw_url and "tg-proxy" not in raw_url:
-                    from services.queue import enqueue_ingest
-                    asyncio.create_task(enqueue_ingest(
-                        episode_id     = row["id"],
-                        anilist_id     = anilist_id,
-                        provider_id    = row["providerId"],
-                        episode_number = ep_num,
-                        direct_url     = raw_url,
-                    ))
+                    from services.queue import enqueue_ingest_batch
+                    asyncio.create_task(enqueue_ingest_batch())
 
             # Kick off prefetch untuk episode berikutnya (semua episodes list)
             asyncio.create_task(
