@@ -120,7 +120,7 @@ class IngestionEngine:
                 logger.warning(f"Failed to disconnect DB: {e}")
                 
             try:
-                from apps.api.services.cache import upstash_del
+                from services.cache import upstash_del
                 lock_key = f"ingest:{anilist_id}:{episode_number}"
                 await upstash_del(lock_key)
                 logger.info(f"Released lock for {lock_key}")
