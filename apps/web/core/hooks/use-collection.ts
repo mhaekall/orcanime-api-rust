@@ -4,7 +4,7 @@ import useSWR from "swr";
 import { useCallback, useEffect, useState } from "react";
 import { WatchlistItem } from "@/core/stores/app-store"; // Keep the interface from there for now
 
-const API_URL = "https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/collection/";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/v2/collection/` : "https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/collection/";
 const LOCAL_KEY = "ani-collection-v3";
 const SYNC_QUEUE_KEY = "ani-sync-queue";
 
@@ -53,6 +53,7 @@ const fetcher = async (url: string, userId?: string): Promise<WatchlistItem[]> =
   if (!userId) return getLocal();
   try {
     const res = await fetch(`${url}?user_id=${userId}`);
+    if (!res.ok) throw new Error("Failed to fetch collection");
     const data = await res.json();
     
     const dataArray = Array.isArray(data) ? data : (data?.data || []);
@@ -88,6 +89,57 @@ export function useCollection(userId?: string) {
 
   // Big Tech Sync Logic: Merge local and cloud, and migrate if cloud is empty
   const [display, setDisplay] = useState<WatchlistItem[]>(getLocal());
+
+  // Background sync processor
+  useEffect(() => {
+    if (!mounted || !userId) return;
+
+    const processSyncQueue = async () => {
+      const queue = getSyncQueue();
+      if (queue.length === 0) return;
+
+      console.log(`[Sync] Processing ${queue.length} offline actions...`);
+      let allSuccess = true;
+
+      for (const item of queue) {
+        try {
+          if (item.action === "update") {
+            const res = await fetch(API_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(item.payload),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          } else if (item.action === "remove") {
+            const { user_id, anilistId } = item.payload;
+            const res = await fetch(`${API_URL}?user_id=${user_id}&anilistId=${anilistId}`, {
+              method: "DELETE"
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          }
+        } catch (e) {
+          console.error(`[Sync] Failed to process queued action ${item.action}:`, e);
+          allSuccess = false;
+          break; // Stop processing on first failure
+        }
+      }
+
+      if (allSuccess) {
+        clearSyncQueue();
+        mutate(); // Revalidate with server
+      }
+    };
+
+    const handleOnline = () => processSyncQueue();
+    window.addEventListener('online', handleOnline);
+    
+    // Attempt processing on mount
+    if (navigator.onLine) {
+      processSyncQueue();
+    }
+
+    return () => window.removeEventListener('online', handleOnline);
+  }, [mounted, userId, mutate]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -147,24 +199,27 @@ export function useCollection(userId?: string) {
 
       await mutate(
         async (current) => {
+          const payload = {
+            user_id: userId,
+            anilistId: String(item.id),
+            status: item.status,
+            progress: item.progress
+          };
           try {
-            await fetch(API_URL, {
+            const res = await fetch(API_URL, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                user_id: userId,
-                anilistId: String(item.id),
-                status: item.status,
-                progress: item.progress
-              }),
+              body: JSON.stringify(payload),
             });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return next(current);
           } catch (e) {
-            console.error("Failed to update collection:", e);
-            throw e;
+            console.error("[Sync] Offline fallback: Queuing update", e);
+            addToSyncQueue("update", payload);
+            return next(current);
           }
         },
-        { optimisticData: next(display), rollbackOnError: true, revalidate: false }
+        { optimisticData: next(display), rollbackOnError: false, revalidate: false }
       );
     },
     [userId, mutate, display]
@@ -184,9 +239,10 @@ export function useCollection(userId?: string) {
         async (current) => {
           const payload = { user_id: userId, anilistId: id };
           try {
-            await fetch(`${API_URL}?user_id=${userId}&anilistId=${id}`, {
+            const res = await fetch(`${API_URL}?user_id=${userId}&anilistId=${id}`, {
               method: "DELETE"
             });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return next(current);
           } catch (e) {
             console.error("[Sync] Offline fallback: Queuing remove", e);
@@ -195,47 +251,6 @@ export function useCollection(userId?: string) {
           }
         },
         { optimisticData: next(display), rollbackOnError: false, revalidate: false }
-      );
-    },
-    [userId, mutate, display]
-  );
-
-  const toggle = useCallback(
-    (anime: Omit<WatchlistItem, "status" | "progress" | "addedAt" | "updatedAt">, defaultStatus: WatchlistItem["status"] = "plan_to_watch") => {
-      const existing = display.find((w) => String(w.id) === String(anime.id));
-      if (existing) {
-        remove(anime.id);
-        return false;
-      } else {
-        updateStatus({ ...anime, status: defaultStatus, progress: 0 });
-        return true;
-      }
-    },
-    [display, remove, updateStatus]
-  );
-
-  return { items: display, toggle, updateStatus, remove, isLoading };
-}
-ilter((h) => String(h.id) !== String(id));
-        saveLocal(nextLocal);
-        return;
-      }
-
-      const next = (prev: WatchlistItem[] = []) => prev.filter((h) => String(h.id) !== String(id));
-
-      await mutate(
-        async (current) => {
-          try {
-            await fetch(`${API_URL}?user_id=${userId}&anilistId=${id}`, {
-              method: "DELETE"
-            });
-            return next(current);
-          } catch (e) {
-            console.error("Failed to remove from collection:", e);
-            throw e;
-          }
-        },
-        { optimisticData: next(display), rollbackOnError: true, revalidate: false }
       );
     },
     [userId, mutate, display]
