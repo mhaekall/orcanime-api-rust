@@ -1,10 +1,163 @@
 import os
 import asyncio
 import logging
+import random
+import httpx
 from typing import Optional
+from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ── Konfigurasi ────────────────────────────────────────────────────────────
+CHUNK_WORKERS   = 4      # Koneksi paralel — sweet spot, tidak terlalu agresif
+CHUNK_SIZE_MB   = 10     # Ukuran tiap chunk dalam MB
+CONNECT_TIMEOUT = 15.0
+READ_TIMEOUT    = 60.0
+MAX_RETRIES     = 3
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+]
+
+
+def _make_headers(url: str) -> dict:
+    parsed = urlparse(url)
+    referer = f"https://{parsed.netloc}/"
+    fake_ip = ".".join(str(random.randint(10, 254)) for _ in range(4))
+    return {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": referer,
+        "Origin": f"https://{parsed.netloc}",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Sec-Fetch-Dest": "video",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site",
+        "X-Forwarded-For": fake_ip,
+        "X-Real-IP": fake_ip,
+    }
+
+
+async def _get_file_size(url: str, headers: dict) -> Optional[int]:
+    """HEAD request untuk dapat Content-Length, fallback ke Range: bytes=0-0."""
+    try:
+        async with httpx.AsyncClient(timeout=CONNECT_TIMEOUT, follow_redirects=True, verify=False) as client:
+            r = await client.head(url, headers=headers)
+            if r.status_code == 200:
+                cl = r.headers.get("content-length")
+                if cl:
+                    return int(cl)
+            # Fallback: GET Range bytes=0-0 untuk dapat Content-Range header
+            r2 = await client.get(url, headers={**headers, "Range": "bytes=0-0"})
+            if r2.status_code == 206:
+                cr = r2.headers.get("content-range", "")
+                if "/" in cr:
+                    total = cr.split("/")[-1]
+                    if total != "*":
+                        return int(total)
+    except Exception as e:
+        logger.warning(f"[Fetcher] Cannot get file size: {e}")
+    return None
+
+
+async def _download_chunk(
+    url: str, headers: dict, start: int, end: int,
+    chunk_index: int, output_path: str, semaphore: asyncio.Semaphore,
+) -> bool:
+    """Download satu chunk via Range request, tulis langsung ke posisi yang benar di file."""
+    async with semaphore:
+        range_header = {**headers, "Range": f"bytes={start}-{end}"}
+        for attempt in range(MAX_RETRIES):
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
+                    follow_redirects=True,
+                    verify=False
+                ) as client:
+                    async with client.stream("GET", url, headers=range_header) as r:
+                        if r.status_code not in (200, 206):
+                            logger.warning(f"[Fetcher] Chunk {chunk_index} HTTP {r.status_code}, retry {attempt+1}")
+                            await asyncio.sleep(2 ** attempt)
+                            continue
+                        with open(output_path, "r+b") as f:
+                            f.seek(start)
+                            async for data in r.aiter_bytes(chunk_size=65536):
+                                f.write(data)
+                        logger.info(f"[Fetcher] Chunk {chunk_index} OK ({start}-{end})")
+                        return True
+            except Exception as e:
+                logger.warning(f"[Fetcher] Chunk {chunk_index} error attempt {attempt+1}: {e}")
+                await asyncio.sleep(2 ** attempt)
+        logger.error(f"[Fetcher] Chunk {chunk_index} FAILED after {MAX_RETRIES} retries")
+        return False
+
+
+async def _parallel_download(url: str, output_path: str, file_size: int) -> bool:
+    """Bagi file jadi chunks, download semua secara paralel."""
+    chunk_bytes = CHUNK_SIZE_MB * 1024 * 1024
+    headers = _make_headers(url)
+
+    # Bagi file jadi chunks
+    chunks = []
+    offset, idx = 0, 0
+    while offset < file_size:
+        end = min(offset + chunk_bytes - 1, file_size - 1)
+        chunks.append((offset, end, idx))
+        offset = end + 1
+        idx += 1
+
+    logger.info(f"[Fetcher] {len(chunks)} chunks x {CHUNK_SIZE_MB}MB | {CHUNK_WORKERS} workers paralel")
+
+    # Pre-allocate file dengan ukuran penuh agar bisa tulis di posisi manapun
+    with open(output_path, "wb") as f:
+        f.seek(file_size - 1)
+        f.write(b"\x00")
+
+    semaphore = asyncio.Semaphore(CHUNK_WORKERS)
+    tasks = [
+        _download_chunk(url, headers, start, end, i, output_path, semaphore)
+        for start, end, i in chunks
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    failed = sum(1 for r in results if r is not True)
+    if failed > 0:
+        logger.error(f"[Fetcher] {failed}/{len(chunks)} chunks gagal")
+        return False
+
+    logger.info(f"[Fetcher] Semua {len(chunks)} chunks berhasil diunduh")
+    return True
+
+
+async def _single_stream_download(url: str, output_path: str) -> bool:
+    """Fallback: FFmpeg single stream untuk HLS atau server yang tidak support Range."""
+    logger.info(f"[Fetcher] Menggunakan FFmpeg single stream")
+    headers = _make_headers(url)
+    headers_str = "".join([f"{k}: {v}\r\n" for k, v in headers.items()])
+    command = [
+        "ffmpeg", "-y",
+        "-headers", headers_str,
+        "-i", url,
+        "-c", "copy",
+        "-bsf:a", "aac_adtstoasc",
+        output_path,
+    ]
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await process.communicate()
+    if process.returncode != 0:
+        logger.error(f"[Fetcher] FFmpeg gagal: {stderr.decode()[-400:]}")
+        return False
+    return True
+
 
 class VideoFetcher:
     def __init__(self, output_dir: str = None):
@@ -13,79 +166,43 @@ class VideoFetcher:
 
     async def fetch(self, url: str, output_filename: str, provider_id: str = "") -> Optional[str]:
         """
-        Fetches a video from a direct URL (m3u8 or mp4) and saves it locally as an MP4.
-        Uses ffmpeg for robust handling of streams asynchronously.
+        Download video dari URL ke disk.
+
+        Strategy otomatis:
+        1. HLS (.m3u8)          → FFmpeg langsung (tidak bisa di-chunk)
+        2. MP4 + Range support  → Parallel chunk download (4 koneksi paralel)
+        3. MP4 + no Range       → FFmpeg single stream fallback
         """
         output_path = os.path.join(self.output_dir, output_filename)
-        logger.info(f"Fetching video from {url} to {output_path}...")
+        logger.info(f"[Fetcher] Target: {url[:80]}...")
 
-        # If the file already exists, we skip to save bandwidth and time
-        if os.path.exists(output_path):
-            logger.info(f"File {output_path} already exists. Skipping fetch.")
+        # Skip kalau file sudah ada dan valid
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
+            logger.info(f"[Fetcher] Sudah ada, skip: {output_path}")
             return output_path
 
-        try:
-            # --- ADVANCED HEADER SPOOFING ---
-            import random
+        # HLS → langsung FFmpeg
+        if ".m3u8" in url.lower():
+            success = await _single_stream_download(url, output_path)
+            return output_path if success else None
 
-            # Mimic real browser behavior
-            user_agents = [
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            ]
+        # MP4 → coba parallel download
+        headers = _make_headers(url)
+        file_size = await _get_file_size(url, headers)
 
-            # Generate a fake internal IP to try and confuse simple load balancers
-            fake_ip = f"{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}"
+        if file_size and file_size > 0:
+            logger.info(f"[Fetcher] Ukuran file: {file_size/1024/1024:.1f}MB → parallel download")
+            success = await _parallel_download(url, output_path, file_size)
+        else:
+            # Server tidak support Range atau tidak return size
+            logger.info(f"[Fetcher] Ukuran tidak diketahui → FFmpeg fallback")
+            success = await _single_stream_download(url, output_path)
 
-            h = {
-                "User-Agent": random.choice(user_agents),
-                "Accept": "*/*",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Referer": "https://pixeldrain.com/",
-                "Origin": "https://pixeldrain.com",
-                "DNT": "1",
-                "Connection": "keep-alive",
-                "Sec-Fetch-Dest": "video",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-site",
-                "X-Forwarded-For": fake_ip,
-                "X-Real-IP": fake_ip
-            }
-
-            # Convert dict to FFmpeg header string
-            headers_str = "".join([f"{k}: {v}\r\n" for k, v in h.items()])
-
-            command = [
-                "ffmpeg",
-                "-y",
-                "-headers", headers_str,
-                "-i", url,
-                "-c", "copy",
-                "-bsf:a", "aac_adtstoasc",
-                output_path
-            ]
-            
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await process.communicate()
-            
-            if process.returncode != 0:
-                logger.error(f"FFmpeg failed with error: {stderr.decode()}")
-                return None
-                
-            logger.info(f"Successfully fetched video to {output_path}")
-            return output_path
-            
-        except Exception as e:
-            logger.error(f"Exception during fetching: {str(e)}")
+        if not success:
+            if os.path.exists(output_path):
+                os.remove(output_path)
             return None
 
-if __name__ == "__main__":
-    # Test execution
-    # fetcher = VideoFetcher()
-    # fetcher.fetch("https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", "test_video.mp4")
-    pass
+        actual = os.path.getsize(output_path)
+        logger.info(f"[Fetcher] Selesai: {actual/1024/1024:.1f}MB → {output_path}")
+        return output_path
