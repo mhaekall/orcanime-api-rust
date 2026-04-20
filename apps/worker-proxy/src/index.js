@@ -53,49 +53,82 @@ export default {
         }
       }
 
-      const tgDownloadUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`;
+      // 2. Setup caching logic
+      const cache = caches.default;
+      const cacheKey = new Request(url.toString(), request);
+      
+      // Check cache first (ignore Range for initial cache check if possible, or cache full object)
+      // Since video segments (.ts) are usually requested whole, caching the full response is safe.
+      // For range requests on mp4, Cloudflare handles range requests against cached full objects automatically.
+      let response = await cache.match(cacheKey);
 
-      // 2. Stream the file from Telegram to the client
-      // Forward the original request headers (especially the 'Range' header for video scrubbing)
-      const fetchHeaders = new Headers();
-      const range = request.headers.get("Range");
-      if (range) {
-        fetchHeaders.set("Range", range);
-      }
+      if (!response) {
+        const tgDownloadUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`;
 
-      const fileResponse = await fetch(tgDownloadUrl, {
-        method: "GET",
-        headers: fetchHeaders,
-      });
-
-      // 3. Return the response to the browser, appending our CORS headers
-      const responseHeaders = new Headers(fileResponse.headers);
-      for (const [key, value] of Object.entries(corsHeaders)) {
-        responseHeaders.set(key, value);
-      }
-
-      // If it's a .ts or .m3u8 file, we ensure the correct content type
-      const originalName = url.searchParams.get('name') || '';
-      if (filePath.endsWith('.ts') || originalName.endsWith('.ts')) {
-        responseHeaders.set('Content-Type', 'video/mp2t');
-      } else if (filePath.endsWith('.m3u8') || originalName.endsWith('.m3u8')) {
-        responseHeaders.set('Content-Type', 'application/vnd.apple.mpegurl');
-      } else if (filePath.endsWith('.mp4') || originalName.endsWith('.mp4')) {
-        responseHeaders.set('Content-Type', 'video/mp4');
-      } else {
-        const upstreamCT = fileResponse.headers.get('Content-Type');
-        if (upstreamCT) {
-          responseHeaders.set('Content-Type', upstreamCT);
-        } else {
-          responseHeaders.set('Content-Type', 'video/mp2t'); // fallback for HLS
+        // Fetch from Telegram
+        const fetchHeaders = new Headers();
+        const range = request.headers.get("Range");
+        if (range) {
+          fetchHeaders.set("Range", range);
         }
+
+        const fileResponse = await fetch(tgDownloadUrl, {
+          method: "GET",
+          headers: fetchHeaders,
+        });
+
+        // Build Response Headers
+        const responseHeaders = new Headers(fileResponse.headers);
+        for (const [key, value] of Object.entries(corsHeaders)) {
+          responseHeaders.set(key, value);
+        }
+        
+        // Cache Control for CDN
+        // Cache for 1 year (31536000 seconds) since Telegram files are immutable
+        responseHeaders.set('Cache-Control', 'public, max-age=31536000');
+
+        const originalName = url.searchParams.get('name') || '';
+        if (filePath.endsWith('.ts') || originalName.endsWith('.ts')) {
+          responseHeaders.set('Content-Type', 'video/mp2t');
+        } else if (filePath.endsWith('.m3u8') || originalName.endsWith('.m3u8')) {
+          responseHeaders.set('Content-Type', 'application/vnd.apple.mpegurl');
+        } else if (filePath.endsWith('.mp4') || originalName.endsWith('.mp4')) {
+          responseHeaders.set('Content-Type', 'video/mp4');
+        } else {
+          const upstreamCT = fileResponse.headers.get('Content-Type');
+          if (upstreamCT) {
+            responseHeaders.set('Content-Type', upstreamCT);
+          } else {
+            responseHeaders.set('Content-Type', 'video/mp2t');
+          }
+        }
+
+        response = new Response(fileResponse.body, {
+          status: fileResponse.status,
+          statusText: fileResponse.statusText,
+          headers: responseHeaders,
+        });
+
+        // Put in cache (waitUntil prevents blocking the response)
+        // Only cache 200 OK responses (or 206 Partial Content if safely cacheable, but CF handles 206 caching differently. 
+        // Generally, we cache the 200 response and CF serves 206 from it).
+        if (fileResponse.status === 200) {
+          ctx.waitUntil(cache.put(cacheKey, response.clone()));
+        }
+      } else {
+        // We have a cache hit. We just need to ensure CORS headers are present.
+        const headers = new Headers(response.headers);
+        for (const [key, value] of Object.entries(corsHeaders)) {
+          headers.set(key, value);
+        }
+        response = new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: headers
+        });
       }
 
-      return new Response(fileResponse.body, {
-        status: fileResponse.status,
-        statusText: fileResponse.statusText,
-        headers: responseHeaders,
-      });
+      return response;
 
     } catch (error) {
       return new Response(`Proxy Error: ${error.message}`, { status: 500, headers: corsHeaders });
