@@ -46,7 +46,7 @@ export function CommentSection({ anilistId, episode, currentTime, onSeek, user }
 
   // Use SWR for real-time sync (auto-revalidate every 15s)
   const { data: allComments = [], isLoading } = useSWR(
-    `${API}/api/v2/social/comments?anilistId=${anilistId}&episodeNumber=${episode}&sort_by=${sortBy}`,
+    `${API}/api/v2/comments?anilistId=${anilistId}&episodeNumber=${episode}&sort_by=${sortBy}`,
     fetcher,
     { refreshInterval: 15000, revalidateOnFocus: true }
   );
@@ -58,14 +58,14 @@ export function CommentSection({ anilistId, episode, currentTime, onSeek, user }
   const handleSubmit = async (text: string, parentId?: number) => {
     if (!text.trim() || !userId) return;
     try {
-      const res = await fetch(`${API}/api/v2/social/comments`, {
+      const res = await fetch(`${API}/api/v2/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, anilistId: parseInt(anilistId), episodeNumber: parseFloat(episode), text, parent_id: parentId, timestamp_sec: parentId ? null : Math.floor(currentTime) })
       });
       if (res.ok) {
-        mutate(`${API}/api/v2/social/comments?anilistId=${anilistId}&episodeNumber=${episode}&sort_by=${sortBy}`);
-        if (parentId) mutate(`${API}/api/v2/social/comments?anilistId=${anilistId}&episodeNumber=${episode}&parent_id=${parentId}&sort_by=newest`);
+        mutate(`${API}/api/v2/comments?anilistId=${anilistId}&episodeNumber=${episode}&sort_by=${sortBy}`);
+        if (parentId) mutate(`${API}/api/v2/comments?anilistId=${anilistId}&episodeNumber=${episode}&parent_id=${parentId}&sort_by=newest`);
       }
     } catch (e) {}
   };
@@ -76,12 +76,12 @@ export function CommentSection({ anilistId, episode, currentTime, onSeek, user }
       return;
     }
     try {
-      await fetch(`${API}/api/v2/social/reactions`, {
+      await fetch(`${API}/api/v2/comments/reaction`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comment_id: commentId, user_id: userId, emoji: "🔥" })
       });
-      mutate(`${API}/api/v2/social/comments?anilistId=${anilistId}&episodeNumber=${episode}&sort_by=${sortBy}`);
+      mutate(`${API}/api/v2/comments?anilistId=${anilistId}&episodeNumber=${episode}&sort_by=${sortBy}`);
     } catch (e) {}
   };
 
@@ -112,7 +112,7 @@ export function CommentSection({ anilistId, episode, currentTime, onSeek, user }
         </div>
         {comments.length > 0 ? (
           <div className="flex gap-3 items-center">
-            <div className="w-6 h-6 rounded-full bg-[#3a3a3c] flex items-center justify-center text-[10px] font-black shrink-0 text-white border border-white/10">{comments[0].username.charAt(0).toUpperCase()}</div>
+            <div className="w-6 h-6 rounded-full bg-[#3a3a3c] flex items-center justify-center text-[10px] font-black shrink-0 text-white border border-white/10">{(comments[0].username || "U").charAt(0).toUpperCase()}</div>
             <p className="text-[#e5e5ea] text-xs line-clamp-1">{comments[0].text}</p>
           </div>
         ) : <p className="text-[#8e8e93] text-xs font-medium">Mulai diskusi...</p>}
@@ -173,7 +173,7 @@ const CommentItem = ({ comment: c, onReply, onLike, onSeek, hideActions, userId 
   return (
     <div className="py-4 flex gap-3 group">
       <div className="w-9 h-9 rounded-full bg-[#2c2c2e] flex items-center justify-center text-xs font-black text-white shrink-0 shadow-md border border-white/10 overflow-hidden">
-        {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : c.username.charAt(0).toUpperCase()}
+        {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : (c.username || "U").charAt(0).toUpperCase()}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
@@ -212,7 +212,7 @@ const CommentComposer = ({ userId, onSubmit, compact, autoFocus, placeholder }: 
   return (
     <div className={`flex gap-3 items-start`}>
       <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#0a84ff] to-[#5e5ce6] flex items-center justify-center text-[10px] font-black shrink-0 text-white border border-white/20">
-        {userId.charAt(5).toUpperCase()}
+        {userId ? userId.charAt(5).toUpperCase() : "?"}
       </div>
       <div className="flex-1 relative">
         <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder || "Tambahkan komentar..."} rows={compact ? 1 : 2} className="w-full bg-[#2c2c2e]/50 text-white text-sm p-3 rounded-2xl border border-white/10 focus:outline-none focus:border-[#0a84ff]/50 transition-all resize-none no-scrollbar" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && text.trim()) { e.preventDefault(); handleSend(); } }} />
@@ -224,7 +224,7 @@ const CommentComposer = ({ userId, onSubmit, compact, autoFocus, placeholder }: 
 
 const ThreadList = ({ parentId, anilistId, episode, userId, onLike }: any) => {
   const { data: replies = [], isLoading } = useSWR(
-    `${API}/api/v2/social/comments?anilistId=${anilistId}&episodeNumber=${episode}&parent_id=${parentId}&sort_by=newest`,
+    `${API}/api/v2/comments?anilistId=${anilistId}&episodeNumber=${episode}&parent_id=${parentId}&sort_by=newest`,
     fetcher,
     { refreshInterval: 15000 }
   );
