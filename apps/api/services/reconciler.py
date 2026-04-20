@@ -38,7 +38,7 @@ load_dotenv()
 GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     print("[WARNING] GEMINI_API_KEY is not set.")
-GEMINI_MODEL    = "gemini-2.0-flash" # Ready for gemini-3-flash in future
+GEMINI_MODEL    = "gemini-3-flash-preview" # Updated based on user request
 GEMINI_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     f"{GEMINI_MODEL}:generateContent"
@@ -106,6 +106,9 @@ class GeminiMatcher:
         try:
             r = await cls._get_client().post(GEMINI_ENDPOINT, json=payload)
             raw = r.json()
+            if r.status_code != 200:
+                print(f"[Gemini] Error API {r.status_code}: {raw}")
+                return ""
             text = (
                 raw.get("candidates", [{}])[0]
                    .get("content", {})
