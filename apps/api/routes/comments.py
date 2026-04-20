@@ -28,7 +28,7 @@ async def get_comments(anilistId: int, episodeNumber: float, user_id: Optional[s
     query = """
     SELECT 
         c.id, c.user_id, u.name as username, u.image as avatar, 
-        c.text, c.timestamp_sec, c.is_spoiler, c.is_edited, c.created_at, c.parent_id,
+        c.text, c.timestamp_sec, c.created_at, c.parent_id,
         COUNT(cr.id) FILTER (WHERE cr.emoji = 'like') as likes_count,
         EXISTS(SELECT 1 FROM comment_reactions WHERE comment_id = c.id AND user_id = :user_id AND emoji = 'like') as user_liked
     FROM comments c
