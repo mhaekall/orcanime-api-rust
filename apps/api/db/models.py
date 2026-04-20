@@ -107,9 +107,12 @@ users = Table(
     "user",
     metadata,
     Column("id", String, primary_key=True),
-    Column("username", String, unique=True, nullable=False),
-    Column("avatar", Text),
-    Column("created_at", DateTime, nullable=False, server_default=func.now()),
+    Column("name", String, nullable=False),
+    Column("email", String, unique=True, nullable=False),
+    Column("emailVerified", Boolean, nullable=False, default=False),
+    Column("image", Text),
+    Column("createdAt", DateTime, nullable=False, server_default=func.now()),
+    Column("updatedAt", DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 )
 
 comments = Table(

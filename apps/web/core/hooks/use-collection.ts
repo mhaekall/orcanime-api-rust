@@ -6,6 +6,34 @@ import { WatchlistItem } from "@/core/stores/app-store"; // Keep the interface f
 
 const API_URL = "https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/collection/";
 const LOCAL_KEY = "ani-collection-v3";
+const SYNC_QUEUE_KEY = "ani-sync-queue";
+
+interface SyncAction {
+  action: "update" | "remove";
+  payload: any;
+  timestamp: number;
+}
+
+function getSyncQueue(): SyncAction[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(SYNC_QUEUE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function addToSyncQueue(action: "update" | "remove", payload: any) {
+  if (typeof window === "undefined") return;
+  const queue = getSyncQueue();
+  queue.push({ action, payload, timestamp: Date.now() });
+  localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
+}
+
+function clearSyncQueue() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(SYNC_QUEUE_KEY);
+}
 
 function getLocal(): WatchlistItem[] {
   if (typeof window === "undefined") return [];
@@ -146,6 +174,49 @@ export function useCollection(userId?: string) {
     async (id: string | number) => {
       if (!userId) {
         const nextLocal = display.filter((h) => String(h.id) !== String(id));
+        saveLocal(nextLocal);
+        return;
+      }
+
+      const next = (prev: WatchlistItem[] = []) => prev.filter((h) => String(h.id) !== String(id));
+
+      await mutate(
+        async (current) => {
+          const payload = { user_id: userId, anilistId: id };
+          try {
+            await fetch(`${API_URL}?user_id=${userId}&anilistId=${id}`, {
+              method: "DELETE"
+            });
+            return next(current);
+          } catch (e) {
+            console.error("[Sync] Offline fallback: Queuing remove", e);
+            addToSyncQueue("remove", payload);
+            return next(current);
+          }
+        },
+        { optimisticData: next(display), rollbackOnError: false, revalidate: false }
+      );
+    },
+    [userId, mutate, display]
+  );
+
+  const toggle = useCallback(
+    (anime: Omit<WatchlistItem, "status" | "progress" | "addedAt" | "updatedAt">, defaultStatus: WatchlistItem["status"] = "plan_to_watch") => {
+      const existing = display.find((w) => String(w.id) === String(anime.id));
+      if (existing) {
+        remove(anime.id);
+        return false;
+      } else {
+        updateStatus({ ...anime, status: defaultStatus, progress: 0 });
+        return true;
+      }
+    },
+    [display, remove, updateStatus]
+  );
+
+  return { items: display, toggle, updateStatus, remove, isLoading };
+}
+ilter((h) => String(h.id) !== String(id));
         saveLocal(nextLocal);
         return;
       }

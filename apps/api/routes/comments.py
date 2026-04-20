@@ -27,7 +27,7 @@ async def get_comments(anilistId: int, episodeNumber: float, user_id: Optional[s
     # Fetch comments for an episode
     query = """
     SELECT 
-        c.id, c.user_id, u.username, u.avatar, 
+        c.id, c.user_id, u.name as username, u.image as avatar, 
         c.text, c.timestamp_sec, c.is_spoiler, c.is_edited, c.created_at, c.parent_id,
         COUNT(cr.id) FILTER (WHERE cr.emoji = 'like') as likes_count,
         EXISTS(SELECT 1 FROM comment_reactions WHERE comment_id = c.id AND user_id = :user_id AND emoji = 'like') as user_liked
@@ -35,7 +35,7 @@ async def get_comments(anilistId: int, episodeNumber: float, user_id: Optional[s
     LEFT JOIN "user" u ON c.user_id = u.id
     LEFT JOIN comment_reactions cr ON c.id = cr.comment_id
     WHERE c."anilistId" = :anilistId AND c."episodeNumber" = :episodeNumber
-    GROUP BY c.id, u.username, u.avatar
+    GROUP BY c.id, u.name, u.image
     ORDER BY c.created_at DESC
     """
     rows = await database.fetch_all(query=query, values={"anilistId": anilistId, "episodeNumber": episodeNumber, "user_id": user_id or ""})

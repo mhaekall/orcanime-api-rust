@@ -164,3 +164,9 @@ async def toggle_episode_like(like: EpisodeLikeCreate):
         await database.execute(feed_stmt)
         
         return {"success": True, "action": "added"}
+
+@router.get("/feed/{user_id}")
+async def get_activity_feed(user_id: str):
+    query = select(activity_feed).where(activity_feed.c.user_id == user_id).order_by(desc(activity_feed.c.created_at))
+    rows = await database.fetch_all(query)
+    return {"success": True, "feed": [dict(row) for row in rows]}

@@ -31,10 +31,6 @@ async def get_collection(user_id: str):
 
 @router.post("/")
 async def save_collection(coll: CollectionUpdate):
-    # Upsert user just in case
-    upsert_user = pg_insert(user_table).values(id=coll.user_id, username=f"user_{coll.user_id[-4:]}").on_conflict_do_nothing()
-    await database.execute(upsert_user)
-    
     stmt = pg_insert(collections).values(
         userId=coll.user_id,
         animeSlug=coll.anilistId,
