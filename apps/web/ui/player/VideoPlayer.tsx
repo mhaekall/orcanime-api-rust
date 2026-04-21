@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState, useCallback, memo } from "react";
+import { useEffect, useRef, useState, useCallback, memo, isValidElement, cloneElement } from "react";
 import { IconPlay, IconPause, IconFullscreen, IconVolume, IconSettings } from "@/ui/icons";
 import { useSettings } from "@/core/stores/app-store";
 import { useWatchHistory } from "@/core/hooks/use-watch-history";
@@ -13,12 +13,12 @@ import type { VideoSource } from "@/core/types/anime";
 const QUALITY_ORDER = ["1080p", "720p", "480p", "360p", "Auto"];
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
-const IconChevronRight = () => (
-  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+const IconChevronRight = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 );
 
-const IconChevronLeft = () => (
-  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+const IconChevronLeft = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
 );
 
 // Pre-load HLS.js promise
@@ -39,6 +39,18 @@ const SkipBackwardIcon = ({ className }: { className?: string }) => (
 const SkipForwardIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>
 );
+const EyeIcon = ({ size = 16, className = "" }) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+);
+const HeartIcon = ({ size = 16, fill = "none", className = "" }) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+);
+const MessageIcon = ({ size = 16, className = "" }) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+);
+const XIcon = ({ size = 16, className = "" }) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+);
 
 interface Props {
   anilistId: number;
@@ -50,9 +62,16 @@ interface Props {
   onRequireAutoNext?: () => void;
   onTimeUpdate?: (time: number) => void;
   isLoadingSources?: boolean;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  views?: number;
+  likes?: number;
+  isLiked?: boolean;
+  onLike?: () => void;
+  commentsSlot?: React.ReactNode;
 }
 
-function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episodeNum, onRequireAutoNext, onTimeUpdate, isLoadingSources }: Props) {
+function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episodeNum, onRequireAutoNext, onTimeUpdate, isLoadingSources, onNext, onPrevious, views = 0, likes = 0, isLiked = false, onLike, commentsSlot }: Props) {
   const accent = "#0A84FF";
   const autoPlayNext = useSettings((s) => s.settings.autoPlayNext);
   const { updateProgress } = useWatchHistory();
@@ -65,6 +84,8 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
   const progressRef = useRef(0);
   const durationRef = useRef(0);
   const isDragging = useRef(false);
+  const dragTimeRef = useRef(0);
+  const isTouch = useRef(false);
 
   useEffect(() => {
     if (!hlsModulePromise && typeof window !== "undefined") {
@@ -89,15 +110,15 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
   const [muted, setMuted] = useState(false);
-  const [controls, setControls] = useState(true);
+  const [controls, setControls] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [menuView, setMenuView] = useState<"main" | "quality" | "speed">("main");
   const [speed, setSpeed] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [hasTriggeredAutoNext, setHasTriggeredAutoNext] = useState(false);
   const [volume, setVolume] = useState(1);
   const [previewPos, setPreviewPos] = useState<number | null>(null);
-  const previewVideoRef = useRef<HTMLVideoElement>(null);
 
   const { containerRef, handleTouchStart, ripple } = useVideoGestures(videoRef);
 
@@ -105,12 +126,17 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
     if (!current && defaultSrc) setCurrent(defaultSrc);
   }, [defaultSrc, current]);
 
-  // Safe play helper to avoid AbortError
+  // Safe play helper to avoid AbortError and NotAllowedError
   const safePlay = useCallback(async (v: HTMLVideoElement) => {
     try {
       await v.play();
     } catch (e) {
-      if ((e as any).name !== "AbortError") console.error("Play Error:", e);
+      const name = (e as any).name;
+      if (name === "NotAllowedError") {
+        setControls(true); // Autoplay blocked, show controls for manual play
+      } else if (name !== "AbortError") {
+        console.error("Play Error:", e);
+      }
     }
   }, []);
 
@@ -144,6 +170,7 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
           hls.on(Hls.Events.MANIFEST_PARSED, () => { 
             setLoading(false); 
             if (seekTo != null) video.currentTime = seekTo; 
+            safePlay(video);
           });
           hls.on(Hls.Events.ERROR, (_: any, data: any) => {
             if (data.fatal) { 
@@ -156,7 +183,7 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
           });
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = src.url;
-          video.onloadedmetadata = () => { setLoading(false); if (seekTo != null) video.currentTime = seekTo; };
+          video.onloadedmetadata = () => { setLoading(false); if (seekTo != null) video.currentTime = seekTo; safePlay(video); };
         }
       } catch (e) {
         setError("Gagal menyiapkan video.");
@@ -164,7 +191,7 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
       }
     } else {
       video.src = src.url;
-      video.oncanplay = () => { setLoading(false); if (seekTo != null) video.currentTime = seekTo; };
+      video.oncanplay = () => { setLoading(false); if (seekTo != null) video.currentTime = seekTo; safePlay(video); };
       video.onerror = () => { setError("Gagal memuat file video."); setLoading(false); };
       video.load();
     }
@@ -181,7 +208,7 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
       if (onTimeUpdate) onTimeUpdate(v.currentTime);
       if (v.buffered.length > 0) setBuffered(v.buffered.end(v.buffered.length - 1));
       const dur = v.duration;
-      if (dur > 0 && (v.currentTime / dur) >= 0.9 && autoPlayNext && !hasTriggeredAutoNext && onRequireAutoNext) {
+      if (dur > 0 && (dur - v.currentTime) <= 30 && autoPlayNext && !hasTriggeredAutoNext && onRequireAutoNext) {
         onRequireAutoNext();
         setHasTriggeredAutoNext(true);
       }
@@ -209,11 +236,32 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
   const toggleFS = useCallback(async () => {
     const container = containerRef.current;
     if (!container) return;
-    if (!document.fullscreenElement) await container.requestFullscreen().catch(() => {});
-    else await document.exitFullscreen().catch(() => {});
+    try {
+      if (!document.fullscreenElement) {
+        await container.requestFullscreen().catch(() => {});
+        if (screen.orientation && (screen.orientation as any).lock) {
+          await (screen.orientation as any).lock('landscape').catch(() => {});
+        }
+      } else {
+        await document.exitFullscreen().catch(() => {});
+        if (screen.orientation && screen.orientation.unlock) {
+          screen.orientation.unlock();
+        }
+      }
+    } catch (e) {}
   }, []);
 
-  const reveal = useCallback(() => { setControls(true); clearTimeout(hideTimer.current); if (videoRef.current && !videoRef.current.paused) hideTimer.current = setTimeout(() => setControls(false), 3000); }, []);
+  useEffect(() => {
+    const handleFSChange = () => {
+      if (!document.fullscreenElement && screen.orientation && screen.orientation.unlock) {
+        screen.orientation.unlock();
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFSChange);
+    return () => document.removeEventListener("fullscreenchange", handleFSChange);
+  }, []);
+
+  const reveal = useCallback(() => { setControls(true); clearTimeout(hideTimer.current); if (videoRef.current && !videoRef.current.paused) hideTimer.current = setTimeout(() => { if (!isDragging.current) setControls(false); }, 3000); }, []);
 
   // Keyboard Controls
   useEffect(() => {
@@ -263,11 +311,37 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
     reveal(); 
   }, [reveal, safePlay]);
 
+  const toggleControls = useCallback((e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) e.stopPropagation();
+    setControls(prev => {
+      const next = !prev;
+      if (next) {
+        clearTimeout(hideTimer.current);
+        if (videoRef.current && !videoRef.current.paused) {
+          hideTimer.current = setTimeout(() => { if (!isDragging.current) setControls(false); }, 3000);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  // Auto-close comments modal on portrait
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(orientation: portrait)");
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setShowComments(false);
+    };
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
   const getSeekPercent = (e: MouseEvent | React.MouseEvent | TouchEvent | React.TouchEvent) => {
     const b = barRef.current;
     if (!b) return 0;
     let clientX = 0;
     if ('touches' in e && (e as any).touches.length > 0) clientX = (e as any).touches[0].clientX;
+    else if ('changedTouches' in e && (e as any).changedTouches.length > 0) clientX = (e as any).changedTouches[0].clientX;
     else if ('clientX' in e) clientX = (e as any).clientX;
     else return 0;
     return Math.max(0, Math.min(1, (clientX - b.getBoundingClientRect().left) / b.offsetWidth));
@@ -278,20 +352,23 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
       if (!isDragging.current) return;
       isDragging.current = false;
       setPreviewPos(null);
-      if (videoRef.current && duration) videoRef.current.currentTime = getSeekPercent(e) * duration;
+      if (videoRef.current && duration) videoRef.current.currentTime = dragTimeRef.current;
+      reveal();
     };
     const onMove = (e: MouseEvent | TouchEvent) => {
       if (!isDragging.current) return;
+      if (e.cancelable) e.preventDefault();
       const pct = getSeekPercent(e);
       const time = pct * duration;
       setProgress(time);
       setPreviewPos(pct * 100);
-      if (previewVideoRef.current) previewVideoRef.current.currentTime = time;
+      dragTimeRef.current = time;
+      if (videoRef.current) videoRef.current.currentTime = time;
     };
     window.addEventListener('mouseup', onUp as any);
     window.addEventListener('mousemove', onMove as any);
     window.addEventListener('touchend', onUp as any);
-    window.addEventListener('touchmove', onMove as any);
+    window.addEventListener('touchmove', onMove as any, { passive: false });
     return () => {
       window.removeEventListener('mouseup', onUp as any);
       window.removeEventListener('mousemove', onMove as any);
@@ -314,9 +391,20 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
   const bufPct = duration > 0 ? (buffered / duration) * 100 : 0;
 
   if (isLoadingSources && direct.length === 0) return (
-    <div className="w-full aspect-video bg-[#0a0c10] md:rounded-2xl flex flex-col items-center justify-center text-[#8e8e93] gap-3 border border-white/5">
-      <div className="w-8 h-8 border-3 border-white/20 border-t-white rounded-full anim-spin" />
-      <p className="text-sm font-semibold">Memuat video...</p>
+    <div className="w-full aspect-video bg-[#0a0c10] md:rounded-2xl flex flex-col items-center justify-center border border-white/5 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-b from-[#0a84ff]/5 to-transparent animate-pulse" />
+      <div className="relative flex flex-col items-center justify-center gap-4 animate-pulse">
+        <div className="relative flex items-center justify-center text-white drop-shadow-[0_0_15px_rgba(10,132,255,0.5)]">
+           <div className="absolute inset-0 bg-[#0a84ff] opacity-20 blur-2xl rounded-full" />
+           <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 100 100" className="relative z-10">
+             <circle cx="50" cy="50" r="46" fill="currentColor" opacity="0.1" />
+             <path fill="currentColor" d="M50 4 C 20 4 4 22 4 50 C 4 78 20 96 50 96 C 65 96 50 74 50 50 C 50 26 65 4 50 4 Z" />
+             <path fill="currentColor" d="M 22 32 Q 2 10 12 2 Q 28 16 33 46 Z" />
+             <circle cx="28" cy="26" r="4.5" fill="#000000" />
+           </svg>
+        </div>
+        <span className="text-xl font-black text-white tracking-tight drop-shadow-[0_0_15px_rgba(10,132,255,0.5)]">Orca<span className="text-[#0A84FF]">.</span></span>
+      </div>
     </div>
   );
 
@@ -324,22 +412,23 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
     <div 
       ref={containerRef} 
       tabIndex={-1} 
-      className="relative w-full aspect-video bg-black md:rounded-2xl overflow-hidden outline-none select-none border border-white/5 group" 
-      onMouseMove={reveal} 
-      onMouseLeave={() => playing && setControls(false)} 
-      onClick={() => togglePlay()} 
-      onTouchStart={handleTouchStart}
+      className="relative w-full aspect-video bg-black md:rounded-2xl overflow-hidden outline-none select-none border border-white/5 group flex" 
+      onMouseMove={(e) => { if (!isTouch.current) reveal(); }} 
+      onMouseLeave={() => !isDragging.current && playing && setControls(false)} 
+      onClick={() => toggleControls()} 
+      onTouchStart={(e) => { isTouch.current = true; handleTouchStart(e); }}
     >
-      <video 
-        ref={videoRef} 
-        autoPlay={false} 
+      <div className="relative flex-1 w-full h-full bg-black overflow-hidden flex flex-col justify-center cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleControls(e); }}>
+        <video 
+          ref={videoRef} 
+        autoPlay={true} 
         poster={poster} 
-        className="w-full h-full object-contain" 
+        className={`w-full h-full cursor-pointer ${!playing && progress === 0 ? 'object-cover' : 'object-contain'}`} 
         playsInline 
         muted={muted} 
-        preload="auto" 
+        preload="none" 
         onContextMenu={(e) => e.preventDefault()} 
-        onClick={(e) => e.stopPropagation()} 
+        onClick={(e) => { e.stopPropagation(); toggleControls(e); }} 
       />
 
       {ripple && (
@@ -360,10 +449,22 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
         </div>
       )}
 
-      {!playing && !loading && !error && (
-        <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-auto" onClick={(e) => togglePlay(e)}>
-          <div className="w-20 h-20 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 scale-100 hover:scale-110 active:scale-90 transition-all cursor-pointer">
-            <IconPlay className="w-10 h-10 ml-1.5 fill-white text-white" />
+      {controls && !loading && !error && (
+        <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+          <div className="flex items-center justify-center gap-6 md:gap-12 pointer-events-auto" onClick={(e) => { e.stopPropagation(); toggleControls(e); }}>
+            {onPrevious ? (
+              <button onClick={(e) => { e.stopPropagation(); onPrevious(); }} className="w-12 h-12 md:w-14 md:h-14 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 hover:bg-white/20 active:scale-90 transition-all text-white">
+                 <IconChevronLeft className="w-6 h-6 md:w-8 md:h-8" />
+              </button>
+            ) : <div className="w-12 h-12 md:w-14 md:h-14 opacity-0 pointer-events-none" />}
+            <div onClick={(e) => togglePlay(e)} className="w-20 h-20 md:w-24 md:h-24 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 hover:bg-white/20 active:scale-90 transition-all cursor-pointer">
+              {playing ? <IconPause className="w-10 h-10 md:w-12 md:h-12 fill-white text-white" /> : <IconPlay className="w-10 h-10 md:w-12 md:h-12 ml-1.5 fill-white text-white" />}
+            </div>
+            {onNext ? (
+              <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="w-12 h-12 md:w-14 md:h-14 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 hover:bg-white/20 active:scale-90 transition-all text-white">
+                 <IconChevronRight className="w-6 h-6 md:w-8 md:h-8" />
+              </button>
+            ) : <div className="w-12 h-12 md:w-14 md:h-14 opacity-0 pointer-events-none" />}
           </div>
         </div>
       )}
@@ -376,42 +477,13 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
                  <span className="text-white font-bold text-xs uppercase tracking-widest opacity-50">Setelan</span>
                  <button onClick={() => setShowSettings(false)} className="text-[#8e8e93] hover:text-white transition-colors p-1"><IconSettings className="w-3.5 h-3.5" /></button>
               </div>
-              <button onClick={() => setMenuView("quality")} className="flex items-center justify-between px-3 py-3 rounded-xl hover:bg-white/10 transition-colors group">
-                <div className="flex flex-col items-start"><span className="text-white text-sm font-semibold">Kualitas</span><span className="text-[#8e8e93] text-[11px] font-medium">{isAuto ? 'Auto' : current?.quality}</span></div>
-                <IconChevronRight />
-              </button>
+              <div className="flex items-center justify-between px-3 py-3 rounded-xl transition-colors group">
+                <div className="flex flex-col items-start"><span className="text-white text-sm font-semibold">Kualitas</span><span className="text-[#8e8e93] text-[11px] font-medium">Auto HD</span></div>
+              </div>
               <button onClick={() => setMenuView("speed")} className="flex items-center justify-between px-3 py-3 rounded-xl hover:bg-white/10 transition-colors group mt-0.5">
                 <div className="flex flex-col items-start"><span className="text-white text-sm font-semibold">Kecepatan</span><span className="text-[#8e8e93] text-[11px] font-medium">{speed === 1 ? 'Normal' : `${speed}x`}</span></div>
                 <IconChevronRight />
               </button>
-            </div>
-          )}
-
-          {menuView === "quality" && (
-            <div className="p-1.5 flex flex-col min-w-[200px]">
-              <button onClick={() => setMenuView("main")} className="flex items-center gap-2 px-3 py-2 text-[#8e8e93] hover:text-white transition-colors mb-1">
-                <IconChevronLeft />
-                <span className="text-sm font-bold">Kualitas Video</span>
-              </button>
-              <div className="space-y-0.5">
-                <button 
-                  onClick={() => switchQ(direct[0], true)} 
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-colors ${isAuto ? 'bg-white/10 text-[#0a84ff]' : 'text-white/80 hover:bg-white/5'}`}
-                >
-                  <span className="text-sm font-semibold">Auto</span>
-                  {isAuto && <div className="w-1.5 h-1.5 rounded-full bg-[#0a84ff] shadow-[0_0_8px_#0a84ff]" />}
-                </button>
-                {direct.map((s) => (
-                  <button 
-                    key={`${s.quality}-${s.provider}`} 
-                    onClick={() => switchQ(s, false)} 
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-colors ${!isAuto && s.url === current?.url ? 'bg-white/10 text-[#0a84ff]' : 'text-white/80 hover:bg-white/5'}`}
-                  >
-                    <span className="text-sm font-semibold">{s.quality}</span>
-                    {!isAuto && s.url === current?.url && <div className="w-1.5 h-1.5 rounded-full bg-[#0a84ff] shadow-[0_0_8px_#0a84ff]" />}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
@@ -438,43 +510,91 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
         </div>
       )}
 
-      <div className={`absolute inset-0 flex flex-col justify-between transition-opacity duration-200 z-20 pointer-events-none ${controls ? "opacity-100" : "opacity-0"}`} onClick={(e) => e.stopPropagation()}>
-        <div className="bg-gradient-to-b from-black/80 to-transparent p-4 md:p-6 pointer-events-auto">
+      <div className={`absolute inset-0 flex flex-col justify-between transition-opacity duration-200 z-20 pointer-events-none ${controls ? "opacity-100" : "opacity-0"}`}>
+        <div className={`bg-gradient-to-b from-black/80 to-transparent p-4 md:p-6 ${controls ? 'pointer-events-auto' : 'pointer-events-none'}`} onClick={(e) => { e.stopPropagation(); toggleControls(e); }}>
           <p className="text-white font-bold text-sm md:text-base lg:text-lg truncate max-w-[80%] drop-shadow-md">{title}</p>
         </div>
-        <div className="bg-gradient-to-t from-black/90 to-transparent px-safe pb-4 pt-12 pointer-events-auto">
-          <div className="relative py-3 -my-2 group/bar cursor-pointer touch-none" 
-            onMouseDown={(e) => { isDragging.current = true; const pct = getSeekPercent(e); setProgress(pct * duration); setPreviewPos(pct * 100); }}
-            onMouseMove={(e) => { if (!isDragging.current) { const pct = getSeekPercent(e); setPreviewPos(pct * 100); if (previewVideoRef.current) previewVideoRef.current.currentTime = pct * duration; } }}
+        <div className={`bg-gradient-to-t from-black/90 to-transparent px-safe pb-0 md:pb-4 pt-12 flex flex-col ${controls ? 'pointer-events-auto' : 'pointer-events-none'}`} onClick={(e) => { e.stopPropagation(); toggleControls(e); }}>
+          <div className="flex items-center justify-between gap-2 mb-2 md:mb-0 md:mt-3 order-1 px-2 md:px-0">
+            <div className="flex items-center gap-2 md:gap-4">
+              <span className="text-white/90 text-xs md:text-sm font-medium tabular-nums ml-1">{fmt(progress)} <span className="text-white/50 mx-1">/</span> {fmt(duration)}</span>
+            </div>
+            <div className="flex items-center gap-4 md:gap-6 lg:gap-8">
+              {typeof document !== "undefined" && document.pictureInPictureEnabled && (
+                <button onClick={(e) => { e.stopPropagation(); if(videoRef.current) videoRef.current.requestPictureInPicture().catch(()=>{}); }} className="text-white p-1.5 hover:bg-white/10 rounded-full hidden sm:block">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect><rect x="12" y="13" width="7" height="4" rx="1" ry="1"></rect></svg>
+                </button>
+              )}
+              <button onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} className={`p-2 rounded-full transition-all ${showSettings ? 'bg-white text-black' : 'text-white/90 hover:bg-white/10'}`}><IconSettings className="w-5 h-5" /></button>
+              <button onClick={(e) => { e.stopPropagation(); toggleFS(); }} className="text-white p-2 hover:bg-white/10 rounded-full"><IconFullscreen className="w-5 h-5" /></button>
+            </div>
+          </div>
+          <div className="relative py-3 -my-2 md:-my-2 group/bar cursor-pointer touch-none order-2" 
+            onMouseDown={(e) => { e.stopPropagation(); isDragging.current = true; const pct = getSeekPercent(e); const time = pct * duration; setProgress(time); setPreviewPos(pct * 100); dragTimeRef.current = time; if (videoRef.current) videoRef.current.currentTime = time; reveal(); }}
+            onTouchStart={(e) => { e.stopPropagation(); isDragging.current = true; const pct = getSeekPercent(e); const time = pct * duration; setProgress(time); setPreviewPos(pct * 100); dragTimeRef.current = time; if (videoRef.current) videoRef.current.currentTime = time; reveal(); }}
+            onMouseMove={(e) => { if (!isDragging.current) { const pct = getSeekPercent(e); setPreviewPos(pct * 100); } }}
             onMouseLeave={() => !isDragging.current && setPreviewPos(null)}
           >
             {previewPos !== null && duration > 0 && (
-              <div className="absolute bottom-full mb-4 -translate-x-1/2 pointer-events-none" style={{ left: `${previewPos}%` }}>
-                <div className="relative w-32 md:w-48 aspect-video bg-black border-2 border-white/20 rounded-lg overflow-hidden shadow-2xl">
-                  <video ref={previewVideoRef} src={current?.url} className="w-full h-full object-cover" muted playsInline />
-                  <div className="absolute bottom-1 right-1 bg-black/80 px-1.5 py-0.5 rounded text-[10px] font-bold text-white">{fmt((previewPos / 100) * duration)}</div>
+              <div className="absolute bottom-full mb-4 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-1" style={{ left: `${previewPos}%` }}>
+                <div className="w-32 aspect-video bg-black/80 border border-white/20 rounded-lg overflow-hidden shadow-2xl relative flex items-center justify-center">
+                   {current && current.type !== "hls" && !current.url.includes("m3u8") && (
+                     <video 
+                       src={current.url}
+                       className="w-full h-full object-cover absolute inset-0 opacity-50"
+                       ref={(el) => {
+                         if (el) {
+                            const time = (previewPos / 100) * duration;
+                            if (Math.abs(el.currentTime - time) > 1) {
+                              el.currentTime = time;
+                            }
+                         }
+                       }}
+                       muted
+                       playsInline
+                       preload="auto"
+                     />
+                   )}
+                   <span className="text-[12px] font-bold text-white z-10 drop-shadow-md bg-black/40 px-1.5 py-0.5 rounded">{fmt((previewPos / 100) * duration)}</span>
                 </div>
               </div>
             )}
-            <div ref={barRef} className="relative h-1.5 md:h-2 rounded-full bg-white/20 transition-all group-hover/bar:h-2.5">
-              <div className="absolute inset-y-0 left-0 bg-white/30 rounded-full" style={{ width: `${bufPct}%` }} />
-              <div className="absolute inset-y-0 left-0 rounded-full flex items-center justify-end" style={{ width: `${pct}%`, background: accent }}>
+            <div ref={barRef} className="relative h-1.5 md:h-2 rounded-full md:rounded-full bg-white/20 transition-all group-hover/bar:h-2.5">
+              <div className="absolute inset-y-0 left-0 bg-white/30 rounded-full md:rounded-full" style={{ width: `${bufPct}%` }} />
+              <div className="absolute inset-y-0 left-0 rounded-full md:rounded-full flex items-center justify-end" style={{ width: `${pct}%`, background: accent }}>
                 <div className="w-4 h-4 md:w-5 md:h-5 bg-white rounded-full shadow-lg scale-100 group-hover/bar:scale-110 transition-transform translate-x-1/2" />
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between gap-2 mt-3">
-            <div className="flex items-center gap-2 md:gap-4">
-              <button onClick={(e) => togglePlay(e)} className="text-white p-1.5 hover:bg-white/10 rounded-full">{playing ? <IconPause className="w-6 h-6" /> : <IconPlay className="w-6 h-6" />}</button>
-              <span className="text-white/90 text-xs md:text-sm font-medium tabular-nums ml-1">{fmt(progress)} <span className="text-white/50 mx-1">/</span> {fmt(duration)}</span>
-            </div>
-            <div className="flex items-center gap-2 md:gap-4">
-              <button onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} className={`p-1.5 rounded-full transition-all ${showSettings ? 'bg-white text-black' : 'text-white/90 hover:bg-white/10'}`}><IconSettings className="w-5 h-5" /></button>
-              <button onClick={(e) => { e.stopPropagation(); toggleFS(); }} className="text-white p-1.5 hover:bg-white/10 rounded-full"><IconFullscreen className="w-5 h-5" /></button>
+          
+          {/* Social Bar for Horizontal Mode (Below Timebar) */}
+          <div className="hidden md:flex items-center gap-4 mt-3 mb-1 order-3 px-2 md:px-0 transition-opacity">
+            <div className="flex items-center gap-3">
+               <div className="flex items-center gap-1.5 text-white/90 text-[13px] font-semibold">
+                 <EyeIcon size={16} /> {views > 1000 ? (views/1000).toFixed(1) + 'K' : views}
+               </div>
+               <div className="w-[1px] h-3 bg-white/20" />
+               <button onClick={(e) => { e.stopPropagation(); onLike?.(); }} className={`flex items-center gap-1.5 text-[13px] font-semibold transition-colors ${isLiked ? 'text-[#ff453a]' : 'text-white/90 hover:text-white'}`}>
+                 <HeartIcon size={16} fill={isLiked ? "currentColor" : "none"} /> {likes}
+               </button>
+               <div className="w-[1px] h-3 bg-white/20" />
+               <button onClick={(e) => { e.stopPropagation(); setShowComments(!showComments); }} className="flex items-center gap-1.5 text-white/90 hover:text-white text-[13px] font-semibold transition-colors">
+                 <MessageIcon size={16} /> Komentar
+               </button>
             </div>
           </div>
         </div>
       </div>
+      </div>
+
+      {/* Side Comment Modal */}
+      {showComments && commentsSlot && (
+        <div className="w-72 sm:w-80 md:w-96 shrink-0 bg-[#0a0c10] border-l border-white/10 z-50 flex flex-col pointer-events-auto animate-in fade-in slide-in-from-right-8 relative" onClick={(e) => e.stopPropagation()}>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 relative z-50 flex flex-col">
+             {isValidElement(commentsSlot) ? cloneElement(commentsSlot as any, { onClose: () => setShowComments(false) }) : commentsSlot}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,11 +6,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { VideoPlayer } from "@/ui/player/VideoPlayer";
 import { AutoNextOverlay } from "@/ui/player/AutoNextOverlay";
-import { IconBack, IconPlay, IconCheck, IconStar, IconShare, IconBookmark } from "@/ui/icons";
+import { IconBack, IconPlay, IconCheck, IconStar, IconShare, IconBookmark, IconFullscreen } from "@/ui/icons";
 import { CommentSection } from "./CommentSection";
 import { useCollection } from "@/core/hooks/use-collection";
 import { authClient } from "@/core/lib/auth-client";
 import { API } from "@/core/lib/api";
+import DetailClient from "@/features/detail/DetailClient";
 
 // Helper SVG icons for those missing in ui/icons
 const HeartIcon = ({ size = 16, fill = "none" }) => (
@@ -18,6 +19,14 @@ const HeartIcon = ({ size = 16, fill = "none" }) => (
 );
 const DownloadIcon = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+);
+
+const EyeIcon = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+);
+
+const ShareArrowIcon = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="m15 5 6 6-6 6"/><path d="M21 11H9C4.029 11 2 14 2 18"/></svg>
 );
 
 interface Props {
@@ -33,6 +42,7 @@ interface Props {
 
 export default function WatchClient({ id, episode: initialEpisode, title, poster, sources: initialSources, allEpisodes, recommendations = [], animeDetails }: Props) {
   const router = useRouter();
+  const [isMinimized, setIsMinimized] = useState(false);
   const [activeEpisode, setActiveEpisode] = useState(initialEpisode);
   const [showAutoNext, setShowAutoNext] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -43,6 +53,22 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
   const epNum = parseFloat(activeEpisode) || 1;
   const [mounted, setMounted] = useState(false);
   const [showSynopsis, setShowSynopsis] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Native PiP when leaving browser
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const v = document.querySelector("video");
+      if (document.hidden && v && !v.paused && document.pictureInPictureEnabled) {
+        v.requestPictureInPicture().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   const { data: session } = authClient.useSession();
   const { items, toggle } = useCollection(session?.user?.id);
@@ -64,6 +90,24 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
     }
   };
 
+  const handleMinimize = () => {
+    // Meminta PiP native pada browser/OS jika tersedia
+    const v = document.querySelector("video");
+    if (v && document.pictureInPictureEnabled) {
+      v.requestPictureInPicture().catch(() => {});
+    }
+    setIsMinimized(true);
+    window.history.pushState(null, '', `/anime/${id}`);
+  };
+
+  const handleMaximize = () => {
+    if (document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(() => {});
+    }
+    setIsMinimized(false);
+    window.history.pushState(null, '', `/watch/${id}/${activeEpisode}`);
+  };
+
 
 
   // Scroll current episode into view on mount
@@ -83,7 +127,7 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
   }, [initialEpisode]);
 
   const { data: epStats, mutate: mutateEpStats } = useSWR(
-    mounted ? `https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/social/episode/${id}/${activeEpisode}/stats${session?.user?.id ? `?user_id=${session.user.id}` : ''}` : null,
+    mounted ? `${API}/api/v2/social/episode/${id}/${activeEpisode}/stats${session?.user?.id ? `?user_id=${session.user.id}` : ''}` : null,
     async (url) => {
       const res = await fetch(url);
       return res.json();
@@ -92,7 +136,7 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
   );
 
   const { data: animeStats, mutate: mutateAnimeStats } = useSWR(
-    mounted ? `https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/social/anime/${id}/stats` : null,
+    mounted ? `${API}/api/v2/social/anime/${id}/stats` : null,
     async (url) => {
       const res = await fetch(url);
       return res.json();
@@ -108,7 +152,7 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
     if (!mounted || !session?.user?.id) return;
 
     const timer = setTimeout(() => {
-      fetch('https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/social/watch-event', {
+      fetch(`${API}/api/v2/social/watch-event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -139,7 +183,7 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
     }), false);
 
     try {
-      await fetch('https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/social/episode/like', {
+      await fetch(`${API}/api/v2/social/episode/like`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -186,6 +230,7 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
   const sortedEpisodes = [...allEpisodes].sort((a, b) => a.number - b.number);
   const currentIndex = sortedEpisodes.findIndex(e => e.number === epNum);
   const nextEp = currentIndex > -1 && currentIndex < sortedEpisodes.length - 1 ? sortedEpisodes[currentIndex + 1] : null;
+  const prevEp = currentIndex > 0 ? sortedEpisodes[currentIndex - 1] : null;
 
   const handleSeek = (time: number) => {
     const v = document.querySelector("video");
@@ -193,102 +238,154 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
   };
 
   return (
-    <div className="w-full min-h-[100dvh] bg-black flex flex-col anim-fade items-center">
-      
-      {/* Sticky Player (Full Width) */}
-      <div className="sticky top-0 z-[100] w-full bg-black shadow-xl border-b border-[#2c2c2e]/50 max-w-[1200px] mx-auto">
-        <button onClick={() => router.back()} className="absolute top-4 left-4 z-50 w-9 h-9 bg-black/40 rounded-full flex items-center justify-center text-white border border-white/10 active:scale-90 transition-transform"><IconBack /></button>
-        <div className="relative w-full aspect-video flex flex-col justify-center min-h-0 bg-black overflow-hidden">
-          <VideoPlayer 
-            anilistId={parseInt(id, 10)}
-            title={`${title} - Eps ${activeEpisode}`} 
-            poster={poster} 
-            sources={sources} 
-            animeSlug={id} 
-            episodeNum={epNum} 
-            onRequireAutoNext={() => setShowAutoNext(true)} 
-            onTimeUpdate={setCurrentTime}
-            isLoadingSources={streamLoading && sources.length === 0}
-            key={`player-${id}-${activeEpisode}`} // Force re-mount player for clean state
-          />
-          
-          {showAutoNext && nextEp && (
-            <AutoNextOverlay 
-              nextEpisodeUrl={`/watch/${id}/${nextEp.number}`} 
-              nextEpisodeTitle={`Episode ${nextEp.number} - ${nextEp.title || ''}`}
-              nextThumbnail={nextEp.thumbnailUrl || poster}
-              isLastEpisode={false}
-              onCancel={() => setShowAutoNext(false)}
-              onPlayNow={() => handleEpisodeChange(String(nextEp.number))}
-            />
-          )}
-          {showAutoNext && !nextEp && (
-            <AutoNextOverlay 
-              isLastEpisode={true} 
-              onCancel={() => setShowAutoNext(false)} 
-              nextEpisodeUrl="" 
-              nextEpisodeTitle="" 
-            />
-          )}
+    <>
+      {/* Background Anime Details when minimized */}
+      {isMinimized && animeDetails && (
+        <div className="fixed inset-0 z-[100] bg-black overflow-y-auto no-scrollbar">
+          <DetailClient detail={animeDetails} id={id} />
         </div>
-      </div>
+      )}
 
-      {/* Main Content Column */}
-      <div className="w-full max-w-[1200px] p-4 lg:p-6 space-y-6 lg:space-y-8 flex flex-col min-w-0 pb-10">
+      <div className={isMinimized ? "fixed bottom-24 right-4 w-64 md:w-80 z-[600] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/20 transition-all duration-300 anim-fade" : "w-full min-h-[100dvh] bg-black flex flex-col anim-fade items-center"}>
         
-        {/* Title & Social Bar */}
-        <div className="border-b border-white/10 pb-4">
-          <h1 className="text-white font-black text-xl md:text-2xl leading-tight line-clamp-2">{title}</h1>
-          <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
-            <div className="flex items-center gap-3">
-              <span className="text-[#8e8e93] font-medium text-sm">{realViews > 1000 ? (realViews/1000).toFixed(1) + 'K' : realViews} views</span>
-              <span className="w-1 h-1 rounded-full bg-[#8e8e93]" />
-              <span className="text-[#0a84ff] font-bold text-sm bg-[#0a84ff]/10 px-2 py-0.5 rounded-md">Episode {activeEpisode}</span>
-            </div>
-            
-            {/* Action Buttons (YouTube Style) */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-              <button 
-                onClick={handleLike}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-colors ${isLiked ? 'bg-[#ff453a]/20 text-[#ff453a]' : 'bg-white/10 text-white hover:bg-white/20'}`}
-              >
-                <HeartIcon size={16} fill={isLiked ? "currentColor" : "none"} />
-                {realLikes}
-              </button>
-              
-              <button 
-                onClick={handleShare}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 font-bold text-sm text-white transition-colors"
-              >
-                <IconShare className="w-4 h-4" />
-                Bagikan
-              </button>
-              
-              <button 
-                onClick={handleSave}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-colors ${isSaved ? 'bg-[#30d158]/20 text-[#30d158]' : 'bg-white/10 text-white hover:bg-white/20'}`}
-              >
-                <IconBookmark className="w-4 h-4" filled={isSaved} />
-                {isSaved ? 'Disimpan' : 'Simpan'}
-              </button>
+        {/* Sticky/Fixed Player (Full Width or Mini) */}
+        <div className={isMinimized ? "relative w-full aspect-video flex flex-col justify-center min-h-0 bg-black overflow-hidden group" : "fixed md:sticky top-0 z-[500] w-full bg-black shadow-xl border-b border-[#2c2c2e]/50 max-w-[1200px] mx-auto"}>
+          
+          {!isMinimized && (
+            <button onClick={handleMinimize} className="absolute top-4 left-4 z-50 w-9 h-9 bg-black/40 rounded-full flex items-center justify-center text-white border border-white/10 active:scale-90 transition-transform">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+          )}
 
-              {downloads.length > 0 && (
-                <button 
-                  onClick={() => document.getElementById('downloads-section')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 font-bold text-sm text-white transition-colors"
-                >
-                  <DownloadIcon size={16} />
-                  Unduh
-                </button>
-              )}
+          {isMinimized && (
+            <div onClick={handleMaximize} className="absolute inset-0 z-50 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+              <IconFullscreen className="w-8 h-8 text-white drop-shadow-lg" />
             </div>
+          )}
+
+          <div className="relative w-full aspect-video flex flex-col justify-center min-h-0 bg-black overflow-hidden">
+            <VideoPlayer 
+              anilistId={parseInt(id, 10)}
+              title={`${title} - Eps ${activeEpisode}`} 
+              poster={poster} 
+              sources={sources} 
+              animeSlug={id} 
+              episodeNum={epNum} 
+              onRequireAutoNext={() => setShowAutoNext(true)} 
+              onTimeUpdate={setCurrentTime}
+              isLoadingSources={streamLoading && sources.length === 0}
+              onNext={nextEp ? () => handleEpisodeChange(String(nextEp.number)) : undefined}
+              onPrevious={prevEp ? () => handleEpisodeChange(String(prevEp.number)) : undefined}
+              views={realViews}
+              likes={realLikes}
+              isLiked={isLiked}
+              onLike={handleLike}
+              commentsSlot={<CommentSection anilistId={id} episode={activeEpisode} currentTime={currentTime} onSeek={handleSeek} user={session?.user} mode="side" />}
+              key={`player-${id}-${activeEpisode}`} // Force re-mount player for clean state
+            />
+            
+            {showAutoNext && nextEp && !isMinimized && (
+              <AutoNextOverlay 
+                nextEpisodeUrl={`/watch/${id}/${nextEp.number}`} 
+                nextEpisodeTitle={`Episode ${nextEp.number} - ${nextEp.title || ''}`}
+                nextThumbnail={nextEp.thumbnailUrl || poster}
+                isLastEpisode={false}
+                onCancel={() => setShowAutoNext(false)}
+                onPlayNow={() => handleEpisodeChange(String(nextEp.number))}
+              />
+            )}
+            {showAutoNext && !nextEp && !isMinimized && (
+              <AutoNextOverlay 
+                isLastEpisode={true} 
+                onCancel={() => setShowAutoNext(false)} 
+                nextEpisodeUrl="" 
+                nextEpisodeTitle="" 
+              />
+            )}
           </div>
         </div>
 
+        {!isMinimized && (
+          <>
+            {/* Mobile Spacer (because player is fixed on mobile) */}
+            <div className="w-full aspect-video md:hidden shrink-0" />
+
+            {/* Main Content Column */}
+            <div className="w-full max-w-[1200px] p-4 lg:p-6 space-y-4 flex flex-col min-w-0 pb-10">
+        
+        {/* Title & Social Bar */}
+        <div>
+          <h1 className="text-white font-bold text-lg md:text-xl leading-tight line-clamp-2 pb-3">
+            {title} <span className="text-white/50 font-medium ml-1 text-base">· Eps {activeEpisode}</span>
+          </h1>
+          
+          {/* Scrollable Action Bar */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 -mx-4 px-4 lg:mx-0 lg:px-0">
+            <Link href={`/anime/${id}`} className="shrink-0 active:scale-95 transition-transform mr-1">
+               <img src={poster} alt="poster" className="w-9 h-9 rounded-full object-cover border border-white/10" />
+            </Link>
+            
+            <button 
+              onClick={handleSave}
+              className={`shrink-0 px-4 py-2 rounded-full font-bold text-sm transition-colors ${isSaved ? 'bg-white/10 text-white' : 'bg-white text-black hover:bg-gray-200'}`}
+            >
+              {isSaved ? 'Tersimpan' : 'Simpan'}
+            </button>
+            
+            {/* Views */}
+            <div className="flex items-center gap-1.5 px-4 py-2 bg-white/10 rounded-full text-white text-sm font-bold hover:bg-white/20 transition-colors cursor-default shrink-0">
+              <EyeIcon size={16} />
+              {realViews > 1000 ? (realViews/1000).toFixed(1) + 'K' : realViews}
+            </div>
+
+            {/* Likes */}
+            <button 
+              onClick={handleLike}
+              className={`flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full font-bold text-sm transition-colors hover:bg-white/20 shrink-0 ${isLiked ? 'text-[#ff453a]' : 'text-white'}`}
+            >
+              <HeartIcon size={16} fill={isLiked ? "currentColor" : "none"} />
+              {realLikes}
+            </button>
+            
+            <button 
+              onClick={handleShare}
+              className="flex items-center justify-center px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 font-bold text-sm text-white transition-colors shrink-0"
+            >
+              <ShareArrowIcon size={18} />
+            </button>
+
+            <button 
+              onClick={() => alert("Fitur dukungan/Thanks (Saweria) akan segera hadir!")}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 font-bold text-sm text-white transition-colors shrink-0"
+            >
+              <div className="relative flex items-center justify-center">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                <span className="font-black text-[10px] absolute leading-none mt-[1px]">$</span>
+              </div>
+              Thanks
+            </button>
+            
+            <button 
+              onClick={() => alert("Formulir Laporan (Tele Bot) akan segera hadir!")}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 font-bold text-sm text-white transition-colors shrink-0"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+              Lapor
+            </button>
+          </div>
+        </div>
+
+        {/* Comments Section (YouTube Style) */}
+        <div>
+          <CommentSection anilistId={id} episode={activeEpisode} currentTime={currentTime} onSeek={handleSeek} user={session?.user} />
+        </div>
+
         {/* Episode List */}
-        <div className="space-y-3">
+        <div className="pt-2 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-white font-bold text-base md:text-lg tracking-tight">Episode ({allEpisodes.length})</h3>
+            <h3 className="text-white font-bold text-base tracking-tight">
+              {showAllEpisodes ? `Episode (${allEpisodes.length})` : 'Episode'}
+            </h3>
             <button 
               onClick={() => setShowAllEpisodes(!showAllEpisodes)}
               className="text-[#0a84ff] text-sm font-bold bg-[#0a84ff]/10 hover:bg-[#0a84ff]/20 px-3 py-1.5 rounded-lg transition-colors"
@@ -340,15 +437,9 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
           )}
         </div>
 
-        {/* Comments Section (YouTube Style) */}
-        <div className="pt-4 border-t border-[#2c2c2e]/50">
-          <h3 className="text-white font-bold text-base md:text-lg mb-4 tracking-tight">Komentar</h3>
-          <CommentSection anilistId={id} episode={activeEpisode} currentTime={currentTime} onSeek={handleSeek} user={session?.user} />
-        </div>
-
         {/* Recommendations (Horizontal Scroll) */}
-        <div className="pt-4 border-t border-[#2c2c2e]/50 space-y-3">
-          <h3 className="text-white font-bold text-base md:text-lg tracking-tight">Rekomendasi</h3>
+        <div className="pt-2 space-y-3">
+          <h3 className="text-white font-bold text-base tracking-tight">Rekomendasi</h3>
           {recommendations && recommendations.length > 0 ? (
             <div className="flex gap-3 overflow-x-auto no-scrollbar pb-4 snap-x">
               {recommendations.slice(0, 10).map(rec => {
@@ -385,7 +476,10 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
           )}
         </div>
 
+            </div>
+          </>
+        )}
       </div>
-    </div>
+    </>
   );
 }
