@@ -23,8 +23,8 @@ BOT_POOL = [
         "proxy": os.getenv("TG_PROXY_BASE_URL", "").rstrip("/")
     },
     {
-        "token": "8743346873:AAEUONWv2fRkfgHNxr361_cCscwHDsH4ONI",
-        "proxy": "https://tg-proxy-2.moehamadhkl.workers.dev"
+        "token": os.getenv("TELEGRAM_BOT_TOKEN_2"),
+        "proxy": os.getenv("TG_PROXY_BASE_URL_2", "").rstrip("/")
     }
 ]
 
@@ -38,7 +38,7 @@ class TelegramUploader:
         if not self.chat_id:
             logger.warning("TELEGRAM_CHAT_ID not set. Uploader will fail.")
 
-    async def upload_file(self, file_path: str, max_retries: int = 3) -> Optional[str]:
+    async def upload_file(self, file_path: str, max_retries: int = 3, bot: Optional[dict] = None) -> Optional[str]:
         """
         Uploads a single file to Telegram using a random bot from the pool.
         Returns the full proxy URL (proxy_url + file_id) if successful.
@@ -46,7 +46,7 @@ class TelegramUploader:
         if not self.bot_pool:
             return None
             
-        bot = random.choice(self.bot_pool)
+        bot = bot or random.choice(self.bot_pool)
         bot_token = bot["token"]
         proxy_url = bot["proxy"]
 
@@ -58,7 +58,7 @@ class TelegramUploader:
         
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
+                async with httpx.AsyncClient(timeout=120.0) as client:
                     with open(file_path, "rb") as f:
                         file_key = "video" if endpoint == "sendVideo" else "document"
                         files = {file_key: (os.path.basename(file_path), f)}
