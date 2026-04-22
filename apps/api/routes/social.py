@@ -4,9 +4,41 @@ from db.connection import database
 from db.models import episode_likes, activity_feed, follows, watch_history, anime_metadata, watch_sessions
 from sqlalchemy import select, func, and_, desc, String
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from schemas.social import WatchProgressUpdate, WatchEventCreate, EpisodeLikeCreate
+from schemas.social import WatchProgressUpdate, WatchEventCreate, EpisodeLikeCreate, WatchSessionUpdate
 
 router = APIRouter()
+
+@router.post("/watch-session")
+async def update_watch_session(item: WatchSessionUpdate):
+    session_id = f"{item.user_id}_{item.anilist_id}_{item.episode_number}"
+    is_completed = 1.0 if item.total_duration_sec > 0 and (item.watch_duration_sec / item.total_duration_sec) > 0.9 else (item.watch_duration_sec / item.total_duration_sec if item.total_duration_sec > 0 else 0.0)
+    
+    session_stmt = pg_insert(watch_sessions).values(
+        session_id=session_id,
+        user_id=item.user_id,
+        anilist_id=item.anilist_id,
+        episode_number=item.episode_number,
+        watch_duration_sec=item.watch_duration_sec,
+        total_duration_sec=item.total_duration_sec,
+        drop_timestamp_sec=item.watch_duration_sec,
+        completion_rate=is_completed,
+        quality_watched=item.quality_watched,
+        provider_used=item.provider_used,
+        ended_at=func.now()
+    ).on_conflict_do_update(
+        index_elements=["session_id"],
+        set_={
+            "watch_duration_sec": func.greatest(watch_sessions.c.watch_duration_sec, item.watch_duration_sec),
+            "total_duration_sec": item.total_duration_sec,
+            "drop_timestamp_sec": item.watch_duration_sec,
+            "completion_rate": func.greatest(watch_sessions.c.completion_rate, is_completed),
+            "quality_watched": item.quality_watched,
+            "provider_used": item.provider_used,
+            "ended_at": func.now()
+        }
+    )
+    await database.execute(session_stmt)
+    return {"success": True}
 
 @router.get("/progress")
 async def get_watch_history(user_id: str):
@@ -45,32 +77,6 @@ async def update_watch_history(item: WatchProgressUpdate):
         }
     )
     await database.execute(stmt)
-    
-    # Also upsert to watch_sessions domain 2 table
-    session_id = f"{item.user_id}_{item.anilistId}_{item.episodeNumber}"
-    is_completed = 1.0 if item.isCompleted else (item.progressSeconds / item.durationSeconds if item.durationSeconds > 0 else 0.0)
-    
-    session_stmt = pg_insert(watch_sessions).values(
-        session_id=session_id,
-        user_id=item.user_id,
-        anilist_id=item.anilistId,
-        episode_number=item.episodeNumber,
-        watch_duration_sec=item.progressSeconds,
-        total_duration_sec=item.durationSeconds,
-        drop_timestamp_sec=item.progressSeconds,
-        completion_rate=is_completed,
-        ended_at=func.now()
-    ).on_conflict_do_update(
-        index_elements=["session_id"],
-        set_={
-            "watch_duration_sec": func.greatest(watch_sessions.c.watch_duration_sec, item.progressSeconds),
-            "total_duration_sec": item.durationSeconds,
-            "drop_timestamp_sec": item.progressSeconds,
-            "completion_rate": func.greatest(watch_sessions.c.completion_rate, is_completed),
-            "ended_at": func.now()
-        }
-    )
-    await database.execute(session_stmt)
     
     return {"success": True}
 

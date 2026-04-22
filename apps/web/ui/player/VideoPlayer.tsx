@@ -300,9 +300,27 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
         durationSec: Math.floor(duration), 
         completed: duration > 0 && progress / duration > 0.9 
       });
+      
+      if (userId) {
+        import("@/core/lib/api").then(({ API }) => {
+          fetch(`${API}/api/v2/social/watch-session`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: userId,
+              anilist_id: anilistId,
+              episode_number: episodeNum,
+              watch_duration_sec: Math.floor(progress),
+              total_duration_sec: Math.floor(duration),
+              quality_watched: current?.quality || "Auto",
+              provider_used: current?.provider || "unknown"
+            })
+          }).catch(console.error);
+        });
+      }
     }, 15_000);
     return () => clearInterval(saveTimer.current);
-  }, [progress, duration, anilistId, animeSlug, episodeNum, title, updateProgress]);
+  }, [progress, duration, anilistId, animeSlug, episodeNum, title, updateProgress, userId, current]);
 
   const togglePlay = useCallback((e?: React.MouseEvent | React.TouchEvent) => { 
     if (e) e.stopPropagation();
