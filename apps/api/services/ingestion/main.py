@@ -19,6 +19,12 @@ except ImportError:
     from apps.api.db.connection import database
     from apps.api.db.models import episodes
 from sqlalchemy import update
+import time
+
+try:
+    from services.health_metrics import record_ingestion_metric
+except ImportError:
+    pass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +53,8 @@ class IngestionEngine:
         Full pipeline to ingest a video from a provider, slice it, upload to Telegram, and update DB.
         """
         ping_task = asyncio.create_task(self._keep_alive_ping())
+        start_time = time.time()
+        error_type = None
         
         should_disconnect = False
         try:
@@ -69,25 +77,34 @@ class IngestionEngine:
             m3u8_path = None
             
             async def _run_pipeline():
+                nonlocal error_type
                 # 1. Fetch Video Locally
                 print(f"[Ingestion] Fetching video locally: {direct_video_url[:50]}...")
                 lvp = await self.fetcher.fetch(direct_video_url, filename, provider_id)
-                if not lvp: return False, lvp, None, None
+                if not lvp: 
+                    error_type = "fetch_failed"
+                    return False, lvp, None, None
                 
                 # 2. Slice Video
                 print(f"[Ingestion] Slicing video...")
                 m3p = await self.slicer.slice(url=lvp, filename=filename, provider_id=provider_id, segment_time=12)
-                if not m3p: return False, lvp, m3p, None
+                if not m3p: 
+                    error_type = "slicing_failed"
+                    return False, lvp, m3p, None
                 
                 # 3. Upload to Telegram
                 print(f"[Ingestion] Uploading chunks to Telegram...")
                 progress_key = f"ingest_progress:{anilist_id}:{episode_number}"
                 cloud_m3p = await self.uploader.process_hls_playlist_parallel(m3p, progress_key=progress_key, max_workers=3)
-                if not cloud_m3p: return False, lvp, m3p, None
+                if not cloud_m3p: 
+                    error_type = "upload_failed"
+                    return False, lvp, m3p, None
                 
                 # 4. Upload the master playlist
                 print(f"[Ingestion] Uploading master playlist to Telegram...")
                 f_url = await self.uploader.upload_file(cloud_m3p)
+                if not f_url:
+                    error_type = "upload_failed"
                 return (True, lvp, m3p, f_url) if f_url else (False, lvp, m3p, None)
 
             try:
@@ -95,10 +112,15 @@ class IngestionEngine:
             except asyncio.TimeoutError:
                 print(f"[Ingestion] Timeout (1 hour) exceeded for Anime: {anilist_id} | Ep: {episode_number}")
                 success = False
+                error_type = "timeout"
 
             if not success:
                 print(f"[Ingestion] Pipeline failed or timed out.")
                 self._cleanup_temp_files(local_video_path, m3u8_path)
+                try:
+                    await record_ingestion_metric(provider_id, False, time.time() - start_time, error_type)
+                except Exception:
+                    pass
                 return False
                 
             # 5. Database Sync
@@ -119,9 +141,19 @@ class IngestionEngine:
             # 6. Cleanup
             self._cleanup_temp_files(local_video_path, m3u8_path)
             
+            try:
+                await record_ingestion_metric(provider_id, True, time.time() - start_time, None)
+            except Exception:
+                pass
+
             return True
         except Exception as e:
             print(f"[Ingestion] Database update/pipeline failed: {e}")
+            error_type = "system_error"
+            try:
+                await record_ingestion_metric(provider_id, False, time.time() - start_time, error_type)
+            except Exception:
+                pass
             import traceback
             traceback.print_exc()
             return False

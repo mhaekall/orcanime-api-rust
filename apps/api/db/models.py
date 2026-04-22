@@ -285,3 +285,31 @@ metadata_sources = Table(
     Column("fetched_at", DateTime, nullable=False, server_default=func.now()),
     Index("idx_metadata_sources_canonical", "canonical_id", "source_name", "field_name"),
 )
+
+# ── NEW: Domain 3 Project Health & Ingestion Metrics ────────────────────────
+
+ingestion_metrics = Table(
+    "ingestion_metrics",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("date", Date, nullable=False),
+    Column("provider_id", String, nullable=False),
+    Column("episodes_attempted", Integer, default=0),
+    Column("episodes_success", Integer, default=0),
+    Column("episodes_failed", Integer, default=0),
+    Column("avg_ingest_duration_sec", Float, default=0.0),
+    Column("error_types", JSONB, default=dict),
+    Column("updatedAt", DateTime, nullable=False, server_default=func.now(), onupdate=func.now()),
+    UniqueConstraint("date", "provider_id", name="uq_ingestion_metrics_date_provider"),
+)
+
+provider_health = Table(
+    "provider_health",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("checked_at", DateTime, nullable=False, server_default=func.now()),
+    Column("provider_id", String, nullable=False),
+    Column("is_reachable", Boolean, default=False),
+    Column("avg_response_ms", Float, default=0.0),
+    Column("success_rate_7d", Float, default=0.0),
+)
