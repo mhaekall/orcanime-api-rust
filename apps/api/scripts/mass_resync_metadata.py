@@ -27,8 +27,8 @@ async def mass_resync():
         
         logger.info(f"Found {len(anilist_ids)} animes to resync. Starting aggressive mass resync...")
         
-        # Aggressive concurrency semaphore (8 concurrent instead of 3)
-        sem = asyncio.Semaphore(8)
+        # Aggressive concurrency semaphore (20 concurrent)
+        sem = asyncio.Semaphore(20)
         
         async def sync_one(aid: int):
             async with sem:
@@ -38,14 +38,14 @@ async def mass_resync():
                 except Exception as e:
                     logger.error(f"Failed to resync {aid}: {e}")
                     
-        # Larger chunks, smaller sleep
-        chunk_size = 24
+        # Larger chunks, minimal sleep
+        chunk_size = 100
         for i in range(0, len(anilist_ids), chunk_size):
             chunk = anilist_ids[i:i+chunk_size]
             tasks = [sync_one(aid) for aid in chunk]
             await asyncio.gather(*tasks)
-            # Minimal sleep to keep the pedal to the metal without instantly getting IP banned
-            await asyncio.sleep(0.2)
+            # Ultra-minimal sleep
+            await asyncio.sleep(0.05)
             
         logger.info("Mass resync completed successfully!")
     finally:
