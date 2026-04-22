@@ -11,6 +11,12 @@ class AnimeDetail(TypedDict):
     episodes: list[EpisodeItem]
     poster: str | None
     synopsis: str
+    air_day: str | None
+    genres_local: list[str]
+    score_local: float | None
+    total_episodes: int | None
+    studio: str | None
+    status_local: str | None
 
 class EpisodeSource(TypedDict):
     provider: str

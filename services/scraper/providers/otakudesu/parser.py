@@ -21,10 +21,48 @@ class OtakudesuParser(BaseParser):
         
         synopsis = soup.select_one('div.sinopc')
         
+        # Extract Local Metadata
+        info_box = soup.select_one('.infozingle')
+        air_day = None
+        genres_local = []
+        score_local = None
+        total_episodes = None
+        studio = None
+        status_local = None
+
+        if info_box:
+            for p in info_box.find_all('p'):
+                text = p.get_text(strip=True)
+                lower_text = text.lower()
+                if 'hari waktu tayang' in lower_text or 'hari tayang' in lower_text:
+                    air_day = text.split(':', 1)[-1].strip()
+                elif 'genre' in lower_text:
+                    genres_local = [g.strip() for g in text.split(':', 1)[-1].split(',')]
+                elif 'skor' in lower_text:
+                    try:
+                        score_match = re.search(r'([\d.]+)', text.split(':', 1)[-1])
+                        if score_match:
+                            score_local = float(score_match.group(1))
+                    except Exception:
+                        pass
+                elif 'total episode' in lower_text:
+                    m = re.search(r'\d+', text)
+                    if m: total_episodes = int(m.group())
+                elif 'studio' in lower_text:
+                    studio = text.split(':', 1)[-1].strip()
+                elif 'status' in lower_text:
+                    status_local = text.split(':', 1)[-1].strip()
+        
         return {
-            'episodes': sorted(episodes, key=lambda x: x["number"]),
+            'episodes': sorted(episodes, key=lambda x: x["number"], reverse=True),
             'poster': None,
-            'synopsis': synopsis.get_text(strip=True) if synopsis else ''
+            'synopsis': synopsis.get_text(strip=True) if synopsis else '',
+            'air_day': air_day,
+            'genres_local': genres_local,
+            'score_local': score_local,
+            'total_episodes': total_episodes,
+            'studio': studio,
+            'status_local': status_local
         }
 
     def parse_episode_sources(self, html: str) -> list[EpisodeSource]:

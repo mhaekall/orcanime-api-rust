@@ -250,18 +250,19 @@ async def sync_anime_episodes(anilist_id: int) -> dict:
                     raw_episodes = detail.get("episodes", [])
                     print(f"[Pipeline Debug] Fetched {len(raw_episodes)} episodes from {series_url}")
                     
-                    # Domain 1: Record Metadata Source (Episode Count)
+                    # Domain 1: Record Metadata Source
                     try:
                         from services.reconciler import reconciler
                         canonical_row = await database.fetch_one(
-                            "SELECT id, episode_count_actual FROM canonical_anime WHERE anilist_id = :id",
+                            "SELECT id, episode_count_actual, air_schedule_wib, genres_local FROM canonical_anime WHERE anilist_id = :id",
                             {"id": anilist_id}
                         )
                         if canonical_row:
                             canonical_id = canonical_row["id"]
                             current_actual = canonical_row["episode_count_actual"]
-                            fetched_count = len(raw_episodes)
+                            fetched_count = detail.get("total_episodes") or len(raw_episodes)
                             
+                            # 1. Episode Count
                             await reconciler.record_metadata_source(
                                 canonical_id=canonical_id,
                                 source_name=f"{provider_id}_scrape",
@@ -269,13 +270,61 @@ async def sync_anime_episodes(anilist_id: int) -> dict:
                                 raw_value=str(fetched_count),
                                 confidence=0.9
                             )
-                            
-                            # Provider wins for episode count if it's larger or not set
                             if current_actual is None or fetched_count > current_actual:
                                 await database.execute(
                                     "UPDATE canonical_anime SET episode_count_actual = :cnt, last_reconciled_at = NOW() WHERE id = :cid",
                                     {"cnt": fetched_count, "cid": canonical_id}
                                 )
+                                
+                            # 2. Air Schedule (Jadwal Tayang)
+                            air_day = detail.get("air_day")
+                            if air_day:
+                                await reconciler.record_metadata_source(
+                                    canonical_id=canonical_id,
+                                    source_name=f"{provider_id}_scrape",
+                                    field_name="air_schedule_wib",
+                                    raw_value=air_day,
+                                    confidence=0.85
+                                )
+                                # Provider wins if current is null or empty
+                                if not canonical_row["air_schedule_wib"]:
+                                    await database.execute(
+                                        "UPDATE canonical_anime SET air_schedule_wib = :air_day, last_reconciled_at = NOW() WHERE id = :cid",
+                                        {"air_day": air_day, "cid": canonical_id}
+                                    )
+                                    
+                            # 3. Genres Local
+                            genres_local = detail.get("genres_local")
+                            if genres_local and isinstance(genres_local, list) and len(genres_local) > 0:
+                                import json
+                                genres_json = json.dumps(genres_local)
+                                await reconciler.record_metadata_source(
+                                    canonical_id=canonical_id,
+                                    source_name=f"{provider_id}_scrape",
+                                    field_name="genres_local",
+                                    raw_value=genres_json,
+                                    confidence=0.85
+                                )
+                                # Provider wins if current is null or empty brackets
+                                current_genres = canonical_row["genres_local"]
+                                if not current_genres or current_genres == "[]" or current_genres == []:
+                                    await database.execute(
+                                        "UPDATE canonical_anime SET genres_local = :g, last_reconciled_at = NOW() WHERE id = :cid",
+                                        {"g": genres_local, "cid": canonical_id}
+                                    )
+                                    
+                            # 4. Score Local, Studio, Status Local -> just record to metadata_sources for now
+                            for field_name in ["score_local", "studio", "status_local"]:
+                                val = detail.get(field_name)
+                                if val:
+                                    await reconciler.record_metadata_source(
+                                        canonical_id=canonical_id,
+                                        source_name=f"{provider_id}_scrape",
+                                        field_name=field_name,
+                                        raw_value=str(val),
+                                        confidence=0.85
+                                    )
+                                    
                     except Exception as e:
                         print(f"[Pipeline] Failed to record metadata source: {e}")
 
