@@ -29,7 +29,11 @@ class QStashPublisher:
                 await upstash_del(lock_key)
                 
         import asyncio
-        asyncio.create_task(_sync_bg())
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_sync_bg())
+        except RuntimeError:
+            asyncio.run(_sync_bg())
 
     @staticmethod
     async def publish_ingest_task(episode_id: int, anilist_id: int, provider_id: str, episode_number: float, direct_url: str, delay: str = None):
@@ -105,7 +109,11 @@ class QStashPublisher:
             except Exception as e:
                 print(f"[Queue] Native batch ingest error: {e}")
                 
-        asyncio.create_task(_run())
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_run())
+        except RuntimeError:
+            asyncio.run(_run())
 
     @staticmethod
     async def publish_ingest_batch_task():

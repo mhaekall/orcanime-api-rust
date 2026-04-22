@@ -23,9 +23,6 @@ class VideoSlicer:
         logger.info(f"🚀 Slicing with Subtitle Mapping from {url}...")
 
         try:
-            from urllib.parse import urlparse
-            referer = f"https://{urlparse(url).netloc}/"
-
             # Perintah FFmpeg sakti: Copy Video & Audio (Cepat), tapi Map Subtitle ke format HLS
             command = [
                 "ffmpeg", "-y",

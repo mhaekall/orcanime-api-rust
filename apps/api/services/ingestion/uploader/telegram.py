@@ -150,6 +150,9 @@ class TelegramUploader:
         uploaded_segments: Dict[int, str] = {}
         semaphore = asyncio.Semaphore(max_workers)
 
+        # Select ONE bot for the entire episode to avoid scattered segments
+        selected_bot = random.choice(self.bot_pool) if self.bot_pool else None
+
         async def _upload_task(index: int, line: str):
             if str(index) in existing_progress:
                 return index, existing_progress[str(index)]
@@ -160,10 +163,10 @@ class TelegramUploader:
                 return index, None
             
             async with semaphore:
-                file_id = await self.upload_file(segment_path)
+                file_id = await self.upload_file(segment_path, bot=selected_bot)
                 return index, file_id
 
-        logger.info(f"Starting parallel upload of {len(segment_lines)} segments with {max_workers} workers...")
+        logger.info(f"Starting parallel upload of {len(segment_lines)} segments with {max_workers} workers via {selected_bot['proxy'] if selected_bot else 'None'}...")
         
         tasks = [_upload_task(idx, line) for idx, line in segment_lines]
         results = await asyncio.gather(*tasks, return_exceptions=True)

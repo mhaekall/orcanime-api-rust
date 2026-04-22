@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+# Regex patterns for secrets
+PATTERNS=(
+  "[0-9]{9,10}:[a-zA-Z0-9_-]{35}" # Telegram Bot Token
+  "hf_[a-zA-Z0-9]{34}"            # Hugging Face Token
+  "GOCSPX-[a-zA-Z0-9_-]{28}"      # Google OAuth Client Secret
+  "UPSTASH_REDIS_REST_TOKEN=[\"']?[A-Za-z0-9_-]{20,}"   # Upstash Redis Token
+)
+
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+  against=HEAD
+else
+  # Initial commit: diff against an empty tree object
+  against=$(git hash-object -t tree /dev/null)
+fi
+
+# Get staged files
+FILES=$(git diff --cached --name-only --diff-filter=ACM $against)
+
+if [ -z "$FILES" ]; then
+  exit 0
+fi
+
+for PATTERN in "${PATTERNS[@]}"; do
+  # Use grep on the diff of staged files
+  MATCHES=$(git diff --cached --color=never $against -- $FILES | grep -E "^\+" | grep -E "$PATTERN")
+  
+  if [ ! -z "$MATCHES" ]; then
+    echo "❌ ERROR: Potential secret detected in your staged changes!"
+    echo "Pattern matched: $PATTERN"
+    echo "Please remove the secret or use environment variables before committing."
+    exit 1
+  fi
+done
+
+exit 0

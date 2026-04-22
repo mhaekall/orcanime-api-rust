@@ -65,34 +65,40 @@ class IngestionEngine:
             print(f"[Ingestion] Starting ingestion for Anime: {anilist_id} | Ep: {episode_number} | Provider: {provider_id}")
             
             filename = f"{provider_id}_{anilist_id}_{episode_number}.mp4"
+            local_video_path = None
+            m3u8_path = None
             
-            # 1. Fetch Video Locally (with progress and timeout)
-            print(f"[Ingestion] Fetching video locally: {direct_video_url[:50]}...")
-            local_video_path = await self.fetcher.fetch(direct_video_url, filename, provider_id)
-            if not local_video_path:
-                print(f"[Ingestion] Failed to fetch video locally from {direct_video_url}")
-                return False
-
-            # 2. Slice Video
-            print(f"[Ingestion] Slicing video...")
-            m3u8_path = await self.slicer.slice(url=local_video_path, filename=filename, provider_id=provider_id, segment_time=12)
-            if not m3u8_path:
-                print("[Ingestion] Failed to slice video locally.")
-                return False
-
-            # 3. Upload to Telegram
-            print(f"[Ingestion] Uploading chunks to Telegram...")
-            progress_key = f"ingest_progress:{anilist_id}:{episode_number}"
-            cloud_m3u8_path = await self.uploader.process_hls_playlist_parallel(m3u8_path, progress_key=progress_key, max_workers=3)
-            if not cloud_m3u8_path:
-                print("[Ingestion] Failed to upload segments to Telegram.")
-                return False
+            async def _run_pipeline():
+                # 1. Fetch Video Locally
+                print(f"[Ingestion] Fetching video locally: {direct_video_url[:50]}...")
+                lvp = await self.fetcher.fetch(direct_video_url, filename, provider_id)
+                if not lvp: return False, lvp, None, None
                 
-            # 4. Upload the master playlist
-            print(f"[Ingestion] Uploading master playlist to Telegram...")
-            final_stream_url = await self.uploader.upload_file(cloud_m3u8_path)
-            if not final_stream_url:
-                print("[Ingestion] Failed to upload master playlist to Telegram.")
+                # 2. Slice Video
+                print(f"[Ingestion] Slicing video...")
+                m3p = await self.slicer.slice(url=lvp, filename=filename, provider_id=provider_id, segment_time=12)
+                if not m3p: return False, lvp, m3p, None
+                
+                # 3. Upload to Telegram
+                print(f"[Ingestion] Uploading chunks to Telegram...")
+                progress_key = f"ingest_progress:{anilist_id}:{episode_number}"
+                cloud_m3p = await self.uploader.process_hls_playlist_parallel(m3p, progress_key=progress_key, max_workers=3)
+                if not cloud_m3p: return False, lvp, m3p, None
+                
+                # 4. Upload the master playlist
+                print(f"[Ingestion] Uploading master playlist to Telegram...")
+                f_url = await self.uploader.upload_file(cloud_m3p)
+                return (True, lvp, m3p, f_url) if f_url else (False, lvp, m3p, None)
+
+            try:
+                success, local_video_path, m3u8_path, final_stream_url = await asyncio.wait_for(_run_pipeline(), timeout=3600.0)
+            except asyncio.TimeoutError:
+                print(f"[Ingestion] Timeout (1 hour) exceeded for Anime: {anilist_id} | Ep: {episode_number}")
+                success = False
+
+            if not success:
+                print(f"[Ingestion] Pipeline failed or timed out.")
+                self._cleanup_temp_files(local_video_path, m3u8_path)
                 return False
                 
             # 5. Database Sync
@@ -111,7 +117,7 @@ class IngestionEngine:
             print(f"[Ingestion] Successfully updated DB for episode ID {episode_id} with new stream URL: {final_stream_url}")
             
             # 6. Cleanup
-            self._cleanup_temp_files(None, m3u8_path)
+            self._cleanup_temp_files(local_video_path, m3u8_path)
             
             return True
         except Exception as e:
