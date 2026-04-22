@@ -471,23 +471,3 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
     </>
   );
 }
--0 p-2.5">
-                        <p className="text-white font-bold text-[12px] leading-tight line-clamp-2">{recTitle}</p>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-[#8e8e93] text-sm">Belum ada rekomendasi.</div>
-          )}
-        </div>
-
-            </div>
-          </>
-        )}
-      </div>
-    </>
-  );
-}
