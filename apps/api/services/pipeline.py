@@ -431,7 +431,15 @@ async def get_anime_detail(anilist_id: int) -> Optional[dict]:
         scraper to call.
     """
     meta = await database.fetch_one(
-        'SELECT * FROM anime_metadata WHERE "anilistId" = :id',
+        '''
+        SELECT m.*, 
+               c.title_preferred as "canonicalTitle", 
+               c.episode_count_actual as "canonicalEpisodes",
+               c.genres_local as "canonicalGenres"
+        FROM anime_metadata m
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
+        WHERE m."anilistId" = :id
+        ''',
         values={"id": anilist_id},
     )
     if not meta:
@@ -459,6 +467,18 @@ async def get_anime_detail(anilist_id: int) -> Optional[dict]:
     )
 
     meta_dict = dict(meta)
+    
+    # Override with canonical data if available
+    if meta_dict.get("canonicalTitle"):
+        meta_dict["cleanTitle"] = meta_dict["canonicalTitle"]
+    if meta_dict.get("canonicalEpisodes"):
+        meta_dict["totalEpisodes"] = meta_dict["canonicalEpisodes"]
+    if meta_dict.get("canonicalGenres") and meta_dict.get("canonicalGenres") != "[]":
+        meta_dict["genres"] = meta_dict["canonicalGenres"]
+        
+    # Remove temporary keys
+    for key in ["canonicalTitle", "canonicalEpisodes", "canonicalGenres"]:
+        meta_dict.pop(key, None)
     
     # Parse JSON columns since they might be returned as strings
     import json

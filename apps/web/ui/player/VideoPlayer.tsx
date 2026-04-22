@@ -69,12 +69,13 @@ interface Props {
   isLiked?: boolean;
   onLike?: () => void;
   commentsSlot?: React.ReactNode;
+  userId?: string;
 }
 
-function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episodeNum, onRequireAutoNext, onTimeUpdate, isLoadingSources, onNext, onPrevious, views = 0, likes = 0, isLiked = false, onLike, commentsSlot }: Props) {
+function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episodeNum, onRequireAutoNext, onTimeUpdate, isLoadingSources, onNext, onPrevious, views = 0, likes = 0, isLiked = false, onLike, commentsSlot, userId }: Props) {
   const accent = "#0A84FF";
   const autoPlayNext = useSettings((s) => s.settings.autoPlayNext);
-  const { updateProgress } = useWatchHistory();
+  const { updateProgress } = useWatchHistory(userId);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);

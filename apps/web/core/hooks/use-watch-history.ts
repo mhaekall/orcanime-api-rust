@@ -3,9 +3,10 @@
 import useSWR from "swr";
 import { useCallback, useEffect, useState } from "react";
 import type { WatchHistoryItem } from "@/core/types/anime";
+import { API } from "@/core/lib/api";
 
 // We use anilistId as the primary key as per TEAM_MANIFESTO.md
-const API_URL = "https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/social/progress";
+const API_URL = `${API}/api/v2/social/progress`;
 const LOCAL_KEY = "ani-history-v3";
 
 function getLocal(): WatchHistoryItem[] {

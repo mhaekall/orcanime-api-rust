@@ -152,23 +152,11 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
     if (!mounted || !session?.user?.id) return;
 
     const timer = setTimeout(() => {
-      fetch(`${API}/api/v2/social/watch-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: session.user.id,
-          anilistId: parseInt(id),
-          episodeNumber: parseFloat(activeEpisode),
-          event_type: 'complete',
-          timestamp_sec: 0
-        })
-      }).then(() => {
-        // Optimistically update views after watching for 5 seconds
-        mutateAnimeStats((prev: any) => ({
-          ...prev,
-          total_episode_views: (prev?.total_episode_views || 0) + 1
-        }), false);
-      }).catch(console.error);
+      // Optimistically update views after watching for 5 seconds
+      mutateAnimeStats((prev: any) => ({
+        ...prev,
+        total_episode_views: (prev?.total_episode_views || 0) + 1
+      }), false);
     }, 5000);
 
     return () => clearTimeout(timer);
@@ -464,6 +452,26 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                       <div className="absolute bottom-0 inset-x-0 p-2.5">
+                        <p className="text-white font-bold text-[12px] leading-tight line-clamp-2">{recTitle}</p>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-[#8e8e93] text-sm">Belum ada rekomendasi.</div>
+          )}
+        </div>
+
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+-0 p-2.5">
                         <p className="text-white font-bold text-[12px] leading-tight line-clamp-2">{recTitle}</p>
                       </div>
                     </div>
