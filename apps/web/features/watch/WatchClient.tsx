@@ -270,6 +270,7 @@ export default function WatchClient({ id, episode: initialEpisode, title, poster
               onLike={handleLike}
               commentsSlot={<CommentSection anilistId={id} episode={activeEpisode} currentTime={currentTime} onSeek={handleSeek} user={session?.user} mode="side" />}
               key={`player-${id}-${activeEpisode}`} // Force re-mount player for clean state
+              userId={session?.user?.id}
             />
             
             {showAutoNext && nextEp && !isMinimized && (

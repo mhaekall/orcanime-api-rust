@@ -119,6 +119,7 @@ export default function DetailClient({ detail, id }: { detail: any; id: string }
               ["Status", d.status === "FINISHED" ? "Selesai" : d.status === "RELEASING" ? "Tayang" : "TBA"],
               ["Studio", d.studios?.join(", ") || "-"],
               ["Musim", d.season ? `${d.season.toLowerCase()} ${d.seasonYear}` : "-"],
+              ["Jadwal Rilis", d.airSchedule || "-"],
             ].map(([l, v]) => (
               <div key={l} className="bg-[#1c1c1e] rounded-2xl p-3 border border-white/5">
                 <p className="text-[#8e8e93] text-[10px] uppercase tracking-wider mb-0.5">{l}</p>

@@ -435,7 +435,8 @@ async def get_anime_detail(anilist_id: int) -> Optional[dict]:
         SELECT m.*, 
                c.title_preferred as "canonicalTitle", 
                c.episode_count_actual as "canonicalEpisodes",
-               c.genres_local as "canonicalGenres"
+               c.genres_local as "canonicalGenres",
+               c.air_schedule_wib as "canonicalSchedule"
         FROM anime_metadata m
         LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         WHERE m."anilistId" = :id
@@ -475,9 +476,11 @@ async def get_anime_detail(anilist_id: int) -> Optional[dict]:
         meta_dict["totalEpisodes"] = meta_dict["canonicalEpisodes"]
     if meta_dict.get("canonicalGenres") and meta_dict.get("canonicalGenres") != "[]":
         meta_dict["genres"] = meta_dict["canonicalGenres"]
+    if meta_dict.get("canonicalSchedule"):
+        meta_dict["airSchedule"] = meta_dict["canonicalSchedule"]
         
     # Remove temporary keys
-    for key in ["canonicalTitle", "canonicalEpisodes", "canonicalGenres"]:
+    for key in ["canonicalTitle", "canonicalEpisodes", "canonicalGenres", "canonicalSchedule"]:
         meta_dict.pop(key, None)
     
     # Parse JSON columns since they might be returned as strings
