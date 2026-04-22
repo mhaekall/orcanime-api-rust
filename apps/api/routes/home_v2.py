@@ -15,78 +15,115 @@ async def get_home_v2(response: Response):
     import asyncio
     
     hero_query = '''
-        SELECT m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."synopsis", m."score", m."nextAiringEpisode"
+        SELECT m."anilistId", 
+               COALESCE(c.title_preferred, m."cleanTitle") as "cleanTitle", 
+               m."nativeTitle", m."coverImage", m."bannerImage", m."synopsis", m."score", m."nextAiringEpisode",
+               COALESCE((SELECT SUM(views) FROM daily_anime_stats d WHERE d."anilistId" = m."anilistId" AND date >= CURRENT_DATE - INTERVAL '7 days'), 0) as local_trending
         FROM anime_metadata m
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         WHERE EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
-        ORDER BY m.trending DESC NULLS LAST, m.popularity DESC NULLS LAST, m.score DESC NULLS LAST
+        ORDER BY local_trending DESC, m.trending DESC NULLS LAST, m.popularity DESC NULLS LAST, m.score DESC NULLS LAST
         LIMIT 10
     '''
     
     airing_query = '''
-        SELECT m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score", m."nextAiringEpisode"
+        SELECT m."anilistId", 
+               COALESCE(c.title_preferred, m."cleanTitle") as "cleanTitle", 
+               m."nativeTitle", m."coverImage", m."bannerImage", m."score", m."nextAiringEpisode",
+               COALESCE((SELECT SUM(views) FROM daily_anime_stats d WHERE d."anilistId" = m."anilistId"), 0) as local_views
         FROM anime_metadata m
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         WHERE m.status = 'RELEASING' AND EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
-        ORDER BY m.popularity DESC NULLS LAST
+        ORDER BY local_views DESC, m.popularity DESC NULLS LAST
         LIMIT 20
     '''
     
     latest_query = '''
-        SELECT m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score",
+        SELECT m."anilistId", 
+               COALESCE(c.title_preferred, m."cleanTitle") as "cleanTitle", 
+               m."nativeTitle", m."coverImage", m."bannerImage", m."score",
                max(e."episodeNumber") as "latestEpisode",
                max(e."updatedAt") as last_up
         FROM anime_metadata m
         JOIN episodes e ON m."anilistId" = e."anilistId"
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         WHERE m.status != 'FINISHED' OR m.status IS NULL
-        GROUP BY m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score"
+        GROUP BY m."anilistId", c.title_preferred, m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score"
         ORDER BY last_up DESC
         LIMIT 20
     '''
     
     popular_query = '''
-        SELECT m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score"
+        SELECT m."anilistId", 
+               COALESCE(c.title_preferred, m."cleanTitle") as "cleanTitle", 
+               m."nativeTitle", m."coverImage", m."bannerImage", m."score",
+               COALESCE((SELECT SUM(views) FROM daily_anime_stats d WHERE d."anilistId" = m."anilistId"), 0) as local_views
         FROM anime_metadata m
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         WHERE EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
-        ORDER BY m.popularity DESC NULLS LAST, m.score DESC NULLS LAST
+        ORDER BY local_views DESC, m.popularity DESC NULLS LAST, m.score DESC NULLS LAST
         LIMIT 20
     '''
 
     completed_query = '''
-        SELECT m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score", m."totalEpisodes"
+        SELECT m."anilistId", 
+               COALESCE(c.title_preferred, m."cleanTitle") as "cleanTitle", 
+               m."nativeTitle", m."coverImage", m."bannerImage", m."score", 
+               COALESCE(c.episode_count_actual, m."totalEpisodes") as "totalEpisodes",
+               COALESCE((SELECT SUM(views) FROM daily_anime_stats d WHERE d."anilistId" = m."anilistId"), 0) as local_views
         FROM anime_metadata m
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         WHERE m.status = 'FINISHED' AND EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
-        ORDER BY m.popularity DESC NULLS LAST, m.score DESC NULLS LAST
+        ORDER BY local_views DESC, m.popularity DESC NULLS LAST, m.score DESC NULLS LAST
         LIMIT 20
     '''
 
     top_rated_query = '''
-        SELECT m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score"
+        SELECT m."anilistId", 
+               COALESCE(c.title_preferred, m."cleanTitle") as "cleanTitle", 
+               m."nativeTitle", m."coverImage", m."bannerImage", m."score",
+               COALESCE((SELECT SUM(views) FROM daily_anime_stats d WHERE d."anilistId" = m."anilistId"), 0) as local_views
         FROM anime_metadata m
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         WHERE EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
-        ORDER BY m.score DESC NULLS LAST, m.popularity DESC NULLS LAST
+        ORDER BY m.score DESC NULLS LAST, local_views DESC, m.popularity DESC NULLS LAST
         LIMIT 20
     '''
 
     isekai_query = '''
-        SELECT m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score"
+        SELECT m."anilistId", 
+               COALESCE(c.title_preferred, m."cleanTitle") as "cleanTitle", 
+               m."nativeTitle", m."coverImage", m."bannerImage", m."score",
+               COALESCE((SELECT SUM(views) FROM daily_anime_stats d WHERE d."anilistId" = m."anilistId"), 0) as local_views
         FROM anime_metadata m
-        WHERE m.genres::text ILIKE '%fantasy%' AND EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
-        ORDER BY m.popularity DESC NULLS LAST
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
+        WHERE (m.genres::text ILIKE '%fantasy%' OR c.genres_local::text ILIKE '%fantasy%' OR c.genres_local::text ILIKE '%isekai%') 
+          AND EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
+        ORDER BY local_views DESC, m.popularity DESC NULLS LAST
         LIMIT 20
     '''
 
     movies_query = '''
-        SELECT m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score"
+        SELECT m."anilistId", 
+               COALESCE(c.title_preferred, m."cleanTitle") as "cleanTitle", 
+               m."nativeTitle", m."coverImage", m."bannerImage", m."score",
+               COALESCE((SELECT SUM(views) FROM daily_anime_stats d WHERE d."anilistId" = m."anilistId"), 0) as local_views
         FROM anime_metadata m
-        WHERE m."totalEpisodes" = 1 AND EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
-        ORDER BY m.popularity DESC NULLS LAST
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
+        WHERE (m."totalEpisodes" = 1 OR c.episode_count_actual = 1) AND EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
+        ORDER BY local_views DESC, m.popularity DESC NULLS LAST
         LIMIT 20
     '''
 
     trending_query = '''
-        SELECT m."anilistId", m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score"
+        SELECT m."anilistId", 
+               COALESCE(c.title_preferred, m."cleanTitle") as "cleanTitle", 
+               m."nativeTitle", m."coverImage", m."bannerImage", m."score",
+               COALESCE((SELECT SUM(views) FROM daily_anime_stats d WHERE d."anilistId" = m."anilistId" AND date >= CURRENT_DATE - INTERVAL '7 days'), 0) as local_trending
         FROM anime_metadata m
+        LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         WHERE EXISTS (SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId")
-        ORDER BY m.trending DESC NULLS LAST, m.popularity DESC NULLS LAST
+        ORDER BY local_trending DESC, m.trending DESC NULLS LAST, m.popularity DESC NULLS LAST
         LIMIT 20
     '''
 

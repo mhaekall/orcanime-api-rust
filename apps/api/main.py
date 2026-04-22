@@ -281,6 +281,13 @@ async def trigger_health_check(background_tasks: BackgroundTasks):
     return {"success": True, "message": "Active health check started in background"}
 
 
+@app.post("/api/v2/admin/mass-resync-metadata", tags=["Admin"], dependencies=[Depends(verify_admin_key)])
+async def trigger_mass_resync(background_tasks: BackgroundTasks):
+    from scripts.mass_resync_metadata import mass_resync
+    background_tasks.add_task(mass_resync)
+    return {"success": True, "message": "Mass resync metadata started in background"}
+
+
 @app.get("/debug/columns/{table_name}", tags=["Debug"], dependencies=[Depends(verify_admin_key)])
 async def get_columns(table_name: str):
     try:
