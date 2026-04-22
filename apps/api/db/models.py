@@ -1,7 +1,8 @@
 from sqlalchemy import (
     Table, Column, Integer, Float, String, Text, Boolean,
-    DateTime, JSON, MetaData, ForeignKey, UniqueConstraint, Index
+    DateTime, Date, JSON, MetaData, ForeignKey, UniqueConstraint, Index
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from .connection import metadata
 
@@ -21,10 +22,10 @@ anime_metadata = Table(
     Column("totalEpisodes",   Integer),
     Column("season",          Text),
     Column("year",            Integer),
-    Column("studios",         JSON),
-    Column("genres",          JSON),
-    Column("recommendations", JSON),
-    Column("nextAiringEpisode", JSON),
+    Column("studios",         JSONB),
+    Column("genres",          JSONB),
+    Column("recommendations", JSONB),
+    Column("nextAiringEpisode", JSONB),
     Column("popularity",      Integer, default=0),
     Column("trending",        Integer, default=0),
     Column("updatedAt", DateTime, nullable=False, server_default=func.now(), onupdate=func.now()),
@@ -94,7 +95,7 @@ video_cache = Table(
     Column("episodeUrl",  Text,    nullable=False, unique=True),
     Column("providerId",  Text,    nullable=False),
     # JSON shape: {"sources": [{provider, quality, url, type}], "downloads": [...]}
-    Column("payload",     JSON,    nullable=False),
+    Column("payload",     JSONB,    nullable=False),
     Column("expiresAt",   DateTime, nullable=False),
     Column("updatedAt",   DateTime, nullable=False, server_default=func.now()),
     Index("idx_video_cache_url",     "episodeUrl"),
@@ -157,7 +158,7 @@ notifications = Table(
     Column("user_id", String, ForeignKey("user.id", ondelete="CASCADE"), nullable=False),
     Column("type", String, nullable=False),
     Column("reference_id", String, nullable=False),
-    Column("metadata", JSON, nullable=True),
+    Column("metadata", JSONB, nullable=True),
     Column("is_read", Boolean, nullable=False, default=False),
     Column("created_at", DateTime, nullable=False, server_default=func.now()),
     Index("idx_notifications_user", "user_id"),
@@ -169,7 +170,7 @@ activity_feed = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("user_id", String, ForeignKey("user.id", ondelete="CASCADE"), nullable=False),
     Column("event_type", String, nullable=False),
-    Column("metadata", JSON, nullable=False),
+    Column("metadata", JSONB, nullable=False),
     Column("created_at", DateTime, nullable=False, server_default=func.now()),
     Index("idx_activity_feed_user", "user_id", "created_at"),
 )
@@ -184,7 +185,7 @@ payment_logs = Table(
     Column("message", Text),
     Column("user_id", String, ForeignKey("user.id", ondelete="SET NULL"), nullable=True),
     Column("status", String, default="processed"),
-    Column("raw_payload", JSON),
+    Column("raw_payload", JSONB),
     Column("created_at", DateTime, nullable=False, server_default=func.now()),
 )
 
@@ -221,7 +222,36 @@ collections = Table(
     Column("userId", String, ForeignKey("user.id", ondelete="CASCADE"), nullable=False),
     Column("animeSlug", String, nullable=False),
     Column("status", String, nullable=False, default="plan_to_watch"), # watching, plan_to_watch, completed, dropped
-    Column("progress", Float, nullable=False, default=0),
+    Column("progress", Float, nullable=False, default=0, comment="Tracks the latest episode number watched (can be fractional like 12.5)"),
     Column("updatedAt", DateTime, nullable=False, server_default=func.now(), onupdate=func.now()),
     UniqueConstraint("userId", "animeSlug", name="uq_user_anime_collection"),
+)
+
+
+# ── NEW: Data Science & Analytics Summary Tables ──────────────────────────────
+
+daily_anime_stats = Table(
+    "daily_anime_stats",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("anilistId", Integer, ForeignKey("anime_metadata.anilistId", ondelete="CASCADE"), nullable=False),
+    Column("date", Date, nullable=False),
+    Column("views", Integer, default=0),
+    Column("popularity", Integer, default=0),
+    Column("trending", Integer, default=0),
+    Column("updatedAt", DateTime, nullable=False, server_default=func.now(), onupdate=func.now()),
+    UniqueConstraint("anilistId", "date", name="uq_anime_daily_stats"),
+    Index("idx_daily_anime_stats_date", "date"),
+)
+
+user_watch_stats = Table(
+    "user_watch_stats",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_id", String, ForeignKey("user.id", ondelete="CASCADE"), nullable=False),
+    Column("total_anime_watched", Integer, default=0),
+    Column("total_episodes_watched", Integer, default=0),
+    Column("total_watch_time_sec", Integer, default=0),
+    Column("updatedAt", DateTime, nullable=False, server_default=func.now(), onupdate=func.now()),
+    UniqueConstraint("user_id", name="uq_user_watch_stats"),
 )
