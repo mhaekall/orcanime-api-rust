@@ -14,14 +14,21 @@ logger = logging.getLogger(__name__)
 async def mass_resync():
     await database.connect()
     try:
-        # Get all anilistIds that have mappings
-        rows = await database.fetch_all('SELECT DISTINCT "anilistId" FROM anime_mappings')
+        # Get all anilistIds that have mappings, ordered by AniList popularity DESC
+        # This ensures that the most popular animes get updated FIRST, instantly reflecting on the homepage!
+        query = """
+            SELECT m."anilistId"
+            FROM anime_metadata m
+            WHERE EXISTS (SELECT 1 FROM anime_mappings map WHERE map."anilistId" = m."anilistId")
+            ORDER BY m.popularity DESC NULLS LAST
+        """
+        rows = await database.fetch_all(query)
         anilist_ids = [row["anilistId"] for row in rows]
         
-        logger.info(f"Found {len(anilist_ids)} animes to resync. Starting mass resync...")
+        logger.info(f"Found {len(anilist_ids)} animes to resync. Starting aggressive mass resync...")
         
-        # Concurrency semaphore
-        sem = asyncio.Semaphore(3)
+        # Aggressive concurrency semaphore (8 concurrent instead of 3)
+        sem = asyncio.Semaphore(8)
         
         async def sync_one(aid: int):
             async with sem:
@@ -31,14 +38,14 @@ async def mass_resync():
                 except Exception as e:
                     logger.error(f"Failed to resync {aid}: {e}")
                     
-        # Instead of asyncio.gather all at once, chunk it to avoid memory/connection issues
-        chunk_size = 10
+        # Larger chunks, smaller sleep
+        chunk_size = 24
         for i in range(0, len(anilist_ids), chunk_size):
             chunk = anilist_ids[i:i+chunk_size]
             tasks = [sync_one(aid) for aid in chunk]
             await asyncio.gather(*tasks)
-            # Sleep a bit to not hammer providers
-            await asyncio.sleep(1)
+            # Minimal sleep to keep the pedal to the metal without instantly getting IP banned
+            await asyncio.sleep(0.2)
             
         logger.info("Mass resync completed successfully!")
     finally:
