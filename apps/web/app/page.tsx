@@ -1,7 +1,9 @@
 import HomeView from "@/features/home/HomeView";
 import { api } from "@/core/lib/api";
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
+export const revalidate = 0;
 
 export default async function Page() {
   let hero = [];
@@ -13,9 +15,10 @@ export default async function Page() {
   let isekai = [];
   let movies = [];
   let trending = [];
+  let errorMsg = null;
 
   try {
-    const res = await api.homeV2({ next: { revalidate: 60 } });
+    const res = await api.homeV2();
     if (res.success && res.data) {
       hero = res.data.hero || [];
       airing = res.data.airing || [];
@@ -27,8 +30,13 @@ export default async function Page() {
       movies = res.data.movies || [];
       trending = res.data.trending || [];
     }
-  } catch (error) {
-    console.error("Failed to fetch home data during build (will retry on client):", error);
+  } catch (error: any) {
+    errorMsg = error.message || String(error);
+    console.error("Failed to fetch home data:", error);
+  }
+
+  if (errorMsg) {
+    return <div style={{ color: 'red', padding: '20px' }}>Error fetching data: {errorMsg}</div>;
   }
 
   return <HomeView 
