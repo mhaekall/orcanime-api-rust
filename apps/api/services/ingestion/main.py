@@ -51,6 +51,7 @@ class IngestionEngine:
         should_disconnect = False
         try:
             if not database.is_connected:
+                print("[Ingestion] Connecting to DB...")
                 await database.connect()
                 should_disconnect = True
                 
@@ -58,58 +59,65 @@ class IngestionEngine:
             check_query = 'SELECT "episodeUrl" FROM episodes WHERE id = :id'
             row = await database.fetch_one(check_query, values={"id": episode_id})
             if row and ("tg-proxy" in row["episodeUrl"] or "workers.dev" in row["episodeUrl"]):
-                logger.info(f"Skipping ingestion for Anime: {anilist_id} | Ep: {episode_number} - Already ingested: {row['episodeUrl']}")
+                print(f"[Ingestion] Skipping ingestion for Anime: {anilist_id} | Ep: {episode_number} - Already ingested: {row['episodeUrl']}")
                 return True
                 
-            logger.info(f"Starting ingestion for Anime: {anilist_id} | Ep: {episode_number} | Provider: {provider_id}")
+            print(f"[Ingestion] Starting ingestion for Anime: {anilist_id} | Ep: {episode_number} | Provider: {provider_id}")
             
             filename = f"{provider_id}_{anilist_id}_{episode_number}.mp4"
             
             # 1. Fetch Video Locally (with progress and timeout)
+            print(f"[Ingestion] Fetching video locally: {direct_video_url[:50]}...")
             local_video_path = await self.fetcher.fetch(direct_video_url, filename, provider_id)
             if not local_video_path:
-                logger.error(f"Failed to fetch video locally from {direct_video_url}")
+                print(f"[Ingestion] Failed to fetch video locally from {direct_video_url}")
                 return False
 
-            # 2. Slice Video (from local file, guaranteed not to hang)
+            # 2. Slice Video
+            print(f"[Ingestion] Slicing video...")
             m3u8_path = await self.slicer.slice(url=local_video_path, filename=filename, provider_id=provider_id, segment_time=12)
             if not m3u8_path:
-                logger.error("Failed to slice video locally.")
+                print("[Ingestion] Failed to slice video locally.")
                 return False
 
-            # 3. Upload to Telegram (Parallel Swarm)
+            # 3. Upload to Telegram
+            print(f"[Ingestion] Uploading chunks to Telegram...")
             progress_key = f"ingest_progress:{anilist_id}:{episode_number}"
             cloud_m3u8_path = await self.uploader.process_hls_playlist_parallel(m3u8_path, progress_key=progress_key, max_workers=3)
             if not cloud_m3u8_path:
-                logger.error("Failed to upload segments to Telegram.")
+                print("[Ingestion] Failed to upload segments to Telegram.")
                 return False
                 
-            # 4. Upload the master playlist itself to Telegram or use it directly
+            # 4. Upload the master playlist
+            print(f"[Ingestion] Uploading master playlist to Telegram...")
             final_stream_url = await self.uploader.upload_file(cloud_m3u8_path)
             if not final_stream_url:
-                logger.error("Failed to upload master playlist to Telegram.")
+                print("[Ingestion] Failed to upload master playlist to Telegram.")
                 return False
                 
-            # 5. Database Sync (Asynchronous)
+            # 5. Database Sync
             should_disconnect = False
             if not database.is_connected:
                 await database.connect()
                 should_disconnect = True
                 
+            print(f"[Ingestion] Updating DB with new proxy URL...")
             stmt = (
                 update(episodes)
                 .where(episodes.c.id == episode_id)
                 .values(episodeUrl=final_stream_url)
             )
             await database.execute(stmt)
-            logger.info(f"Successfully updated DB for episode ID {episode_id} with new stream URL: {final_stream_url}")
+            print(f"[Ingestion] Successfully updated DB for episode ID {episode_id} with new stream URL: {final_stream_url}")
             
-            # 6. Cleanup (After successful sync)
+            # 6. Cleanup
             self._cleanup_temp_files(None, m3u8_path)
             
             return True
         except Exception as e:
-            logger.error(f"Database update failed: {e}")
+            print(f"[Ingestion] Database update/pipeline failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
         finally:
             if ping_task and not ping_task.done():

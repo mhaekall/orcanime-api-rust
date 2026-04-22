@@ -88,23 +88,24 @@ class QStashPublisher:
 
     @staticmethod
     def spawn_batch_worker():
-        import subprocess
-        import os
-        print("[Queue] Spawning batch ingestion subprocess...")
-        api_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        script_path = os.path.join(api_dir, "scripts", "ingest_pending.py")
-        env = os.environ.copy()
-        env["PYTHONPATH"] = f"{env.get('PYTHONPATH', '')}:{api_dir}".strip(":")
+        import asyncio
+        print("[Queue] Spawning batch ingestion as native asyncio task...")
         
-        # Fire and forget subprocess
-        log_file = open(os.path.join(api_dir, "ingest_worker.log"), "a")
-        subprocess.Popen(
-            ["python", script_path, "--limit", "10"],
-            env=env,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            start_new_session=True
-        )
+        async def _run():
+            try:
+                # Dynamically import to avoid circular dependencies
+                import sys
+                import os
+                api_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                if api_dir not in sys.path:
+                    sys.path.insert(0, api_dir)
+                
+                from scripts.ingest_pending import ingest_pending
+                await ingest_pending(10)
+            except Exception as e:
+                print(f"[Queue] Native batch ingest error: {e}")
+                
+        asyncio.create_task(_run())
 
     @staticmethod
     async def publish_ingest_batch_task():

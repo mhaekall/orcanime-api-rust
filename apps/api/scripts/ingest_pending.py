@@ -17,8 +17,10 @@ async def ingest_pending(limit: int):
     print(f"🚀 Memulai GitHub Actions Worker: Mencari maksimal {limit} episode tertunda...")
     
     # Pastikan database terkoneksi sebelum dipakai di query dan get_cached_stream
+    should_disconnect = False
     if not db.is_connected:
         await db.connect()
+        should_disconnect = True
         
     # Cari episode yang URL-nya belum tg-proxy
     query = """
@@ -34,7 +36,8 @@ async def ingest_pending(limit: int):
     
     if not rows:
         print("✅ Tidak ada episode yang perlu di-ingest. Semua up-to-date!")
-        await db.disconnect()
+        if should_disconnect:
+            await db.disconnect()
         return
 
     engine = IngestionEngine()
@@ -87,7 +90,8 @@ async def ingest_pending(limit: int):
         else:
             print(f"❌ Sumber mentah tidak ditemukan untuk {aid} Ep {ep_num}")
 
-    await db.disconnect()
+    if should_disconnect:
+        await db.disconnect()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingest pending episodes")

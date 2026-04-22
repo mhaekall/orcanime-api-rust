@@ -6,6 +6,19 @@ async def upsert_anime_db(anilist_data, provider_id: str, provider_slug: str):
     if not anilist_data or not anilist_data.get('anilistId'):
         return
     try:
+        # ── METADATA RECONCILIATION LOGIC ──
+        # If AniList says 'NOT_YET_RELEASED', but we know we are scraping episodes for it, 
+        # forcefully reconcile the status to 'RELEASING' to match reality.
+        final_status = anilist_data.get('status', '')
+        if final_status == 'NOT_YET_RELEASED':
+            # Fast check if episodes exist for this anilistId
+            eps = await database.fetch_val(
+                'SELECT COUNT(*) FROM episodes WHERE "anilistId" = :aid',
+                values={'aid': anilist_data.get('anilistId')}
+            )
+            if eps and eps > 0:
+                final_status = 'RELEASING'
+                
         query_meta = """
             INSERT INTO anime_metadata (
                 "anilistId", "cleanTitle", "nativeTitle", "coverImage", "bannerImage", 
@@ -48,7 +61,7 @@ async def upsert_anime_db(anilist_data, provider_id: str, provider_slug: str):
             'score': anilist_data.get('score'),
             'popularity': anilist_data.get('popularity', 0),
             'trending': anilist_data.get('trending', 0),
-            'status': anilist_data.get('status', ''),
+            'status': final_status,
             'totalEpisodes': anilist_data.get('totalEpisodes'),
             'season': anilist_data.get('season', ''),
             'year': anilist_data.get('year'),
