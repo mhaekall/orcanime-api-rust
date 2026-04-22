@@ -4,7 +4,7 @@ import { api } from "@/core/lib/api";
 export const revalidate = 60;
 
 export default async function Page() {
-  let initialResults = [];
+  let initialResults: any[] = [];
 
   try {
     const res = await api.browse({ page: 1, sort: "popularity" }, { next: { revalidate: 60 } });
