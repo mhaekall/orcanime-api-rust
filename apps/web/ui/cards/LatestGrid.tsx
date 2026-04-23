@@ -36,7 +36,7 @@ export function LatestGrid({ title, items, isNew = false }: Props) {
                 img={a.img || a.coverImage?.extraLarge || a.coverImage?.large || null}
                 banner={a.banner || a.bannerImage || null}
                 score={a.score || a.averageScore}
-                color={a.color || a.coverImage?.color}
+                views={a.views}                color={a.color || a.coverImage?.color}
                 epId={a.latestEpisode ? String(a.latestEpisode) : (a.episodes ? String(a.episodes) : undefined)}
                 totalEps={a.episodes}
                 variant="vertical"

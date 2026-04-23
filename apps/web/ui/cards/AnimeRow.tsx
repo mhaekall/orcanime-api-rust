@@ -35,6 +35,7 @@ function AnimeRowInner({ title, items, showRank, variant = "vertical" }: Props) 
                 img={a.img || a.coverImage?.extraLarge || a.coverImage?.large || null}
                 banner={a.banner || a.bannerImage || null}
                 score={a.score || a.averageScore}
+                views={a.views}
                 color={a.color || a.coverImage?.color}
                 epId={a.latestEpisode ? String(a.latestEpisode) : undefined}
                 rank={showRank ? i + 1 : undefined}

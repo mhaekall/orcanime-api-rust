@@ -527,9 +527,19 @@ async def get_anime_detail(anilist_id: int) -> Optional[dict]:
         meta_dict["genres"] = meta_dict["canonicalGenres"]
     if meta_dict.get("canonicalSchedule"):
         meta_dict["airSchedule"] = meta_dict["canonicalSchedule"]
+    if meta_dict.get("localViews"):
+        meta_dict["localViews"] = int(meta_dict["localViews"])
+    if meta_dict.get("localScore"):
+        val = float(meta_dict["localScore"])
+        meta_dict["score"] = int(val * 10) if val <= 10 else int(val)
+    if meta_dict.get("localStudio"):
+        meta_dict["studios"] = [meta_dict["localStudio"]]
+    if meta_dict.get("localStatus"):
+        st = meta_dict["localStatus"].lower()
+        meta_dict["status"] = 'FINISHED' if 'completed' in st or 'tamat' in st else 'RELEASING'
         
     # Remove temporary keys
-    for key in ["canonicalTitle", "canonicalEpisodes", "canonicalGenres", "canonicalSchedule"]:
+    for key in ["canonicalTitle", "canonicalEpisodes", "canonicalGenres", "canonicalSchedule", "localScore", "localStudio", "localStatus"]:
         meta_dict.pop(key, None)
     
     # Parse JSON columns since they might be returned as strings
@@ -572,5 +582,8 @@ async def ensure_episodes_exist(anilist_id: int) -> bool:
     # No episodes — enqueue async sync task (Serverless Queue)
     print(f"[Pipeline] No episodes for anilist_id={anilist_id}, enqueuing to QStash…")
     from services.queue import enqueue_sync
+    await enqueue_sync(anilist_id)
+    return False
+s.queue import enqueue_sync
     await enqueue_sync(anilist_id)
     return False
