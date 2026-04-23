@@ -48,10 +48,10 @@ class TelegramUploader:
         if not self.chat_id:
             logger.warning("TELEGRAM_CHAT_ID not set. Uploader will fail.")
 
-    async def upload_file(self, file_path: str, max_retries: int = 5, bot: Optional[dict] = None) -> Optional[str]:
+    async def upload_file(self, file_path: str, max_retries: int = 5, bot: Optional[dict] = None) -> Optional[Dict]:
         """
         Uploads a single file to Telegram using a random bot from the pool.
-        Returns the full proxy URL (proxy_url + file_id) if successful.
+        Returns a dict with url, message_id, bot_token if successful.
         """
         if not self.bot_pool:
             return None
@@ -79,14 +79,19 @@ class TelegramUploader:
                         if response.status_code == 200:
                             resp_json = response.json()
                             file_id = None
+                            message_id = resp_json.get("result", {}).get("message_id")
                             if "document" in resp_json.get("result", {}):
                                 file_id = resp_json["result"]["document"]["file_id"]
                             elif "video" in resp_json.get("result", {}):
                                 file_id = resp_json["result"]["video"]["file_id"]
                                 
                             if file_id:
-                                # Return full proxy URL instead of just file_id
-                                return f"{proxy_url}/{file_id}" if proxy_url else file_id
+                                final_url = f"{proxy_url}/{file_id}" if proxy_url else file_id
+                                return {
+                                    "url": final_url,
+                                    "message_id": message_id,
+                                    "bot_token": bot_token
+                                }
                                 
                         elif response.status_code == 429:
                             # Too Many Requests - Increased delay
@@ -184,8 +189,8 @@ class TelegramUploader:
                 return index, None
             
             async with semaphore:
-                file_id = await self.upload_file(segment_path, bot=selected_bot)
-                return index, file_id
+                file_res = await self.upload_file(segment_path, bot=selected_bot)
+                return index, file_res
 
         logger.info(f"Starting parallel upload of {len(segment_lines)} segments with {max_workers} workers via {selected_bot['proxy'] if selected_bot else 'None'}...")
         
@@ -194,11 +199,17 @@ class TelegramUploader:
 
         for result in results:
             if isinstance(result, tuple) and len(result) == 2:
-                idx, file_id = result
-                if file_id:
-                    uploaded_segments[idx] = file_id
-                    if progress_key:
-                        existing_progress[str(idx)] = file_id
+                idx, file_res = result
+                if file_res:
+                    if isinstance(file_res, dict):
+                        uploaded_segments[idx] = file_res["url"]
+                        if progress_key:
+                            existing_progress[str(idx)] = file_res
+                    elif isinstance(file_res, str):
+                        # Backwards compatibility
+                        uploaded_segments[idx] = file_res
+                        if progress_key:
+                            existing_progress[str(idx)] = file_res
                 else:
                     logger.error(f"Failed to upload segment at line {idx}")
             else:

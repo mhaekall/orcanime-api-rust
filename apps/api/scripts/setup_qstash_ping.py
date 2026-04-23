@@ -72,5 +72,11 @@ if __name__ == "__main__":
         
         # 4. Sync Jikan API Stats (Weekly on Sunday at 01:00 UTC)
         register_cron("/api/v2/admin/cron/sync-jikan", "0 1 * * 0", "POST", auth_headers)
+        
+        # 5. Retry Failed/Orphaned Telegram Ingestions (Daily at 01:30 UTC)
+        register_cron("/api/v2/admin/cron/retry-ingest", "30 1 * * *", "POST", auth_headers)
+        
+        # 6. Auto-Purge Orphaned Telegram Segments (Daily at 02:00 UTC)
+        register_cron("/api/v2/admin/cron/purge-orphans", "0 2 * * *", "POST", auth_headers)
     
     print("Done!")

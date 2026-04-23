@@ -302,6 +302,20 @@ async def trigger_sync_jikan(background_tasks: BackgroundTasks):
     return {"success": True, "message": "Jikan sync started in background"}
 
 
+@app.post("/api/v2/admin/cron/purge-orphans", tags=["Admin", "Cron"], dependencies=[Depends(verify_admin_key)])
+async def trigger_purge_orphans(background_tasks: BackgroundTasks):
+    from scripts.real_purge import purge_orphans
+    background_tasks.add_task(purge_orphans)
+    return {"success": True, "message": "Purge orphans started in background"}
+
+
+@app.post("/api/v2/admin/cron/retry-ingest", tags=["Admin", "Cron"], dependencies=[Depends(verify_admin_key)])
+async def trigger_retry_ingest(background_tasks: BackgroundTasks):
+    from scripts.retry_failed_ingest import retry_failed
+    background_tasks.add_task(retry_failed)
+    return {"success": True, "message": "Retry failed ingestions started in background"}
+
+
 @app.get("/debug/columns/{table_name}", tags=["Debug"], dependencies=[Depends(verify_admin_key)])
 async def get_columns(table_name: str):
     try:

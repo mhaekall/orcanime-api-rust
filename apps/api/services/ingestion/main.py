@@ -102,7 +102,8 @@ class IngestionEngine:
                 
                 # 4. Upload the master playlist
                 print(f"[Ingestion] Uploading master playlist to Telegram...")
-                f_url = await self.uploader.upload_file(cloud_m3p)
+                f_res = await self.uploader.upload_file(cloud_m3p)
+                f_url = f_res.get("url") if f_res else None
                 if not f_url:
                     error_type = "upload_failed"
                 return (True, lvp, m3p, f_url) if f_url else (False, lvp, m3p, None)
