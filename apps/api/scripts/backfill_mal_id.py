@@ -42,4 +42,5 @@ async def main():
     print("Backfill mal_id completed.")
     await database.disconnect()
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
