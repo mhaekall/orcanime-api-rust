@@ -52,7 +52,11 @@ async def process_batch(anilist_id: int, url: str):
         return
 
     # 4. Cari file .mp4 dan Upload ke Telegram
+    from services.ingestion.core.slicer import VideoSlicer
+    from services.cache import upstash_del
+
     uploader = TelegramUploader()
+    slicer = VideoSlicer()
     await database.connect()
     
     mp4_files = list(Path(extract_dir).rglob("*.mp4"))
@@ -72,12 +76,28 @@ async def process_batch(anilist_id: int, url: str):
             
         ep_num = float(match.group(1)) if match else 0.0
         
-        print(f"\n⏳ Mengunggah Episode {ep_num} ({file_path.name})...")
-        result = await uploader.upload_file(str(file_path))
+        print(f"\n✂️ Memotong video {file_path.name} menjadi HLS 5-detik...")
+        m3u8_path = await slicer.slice(url=str(file_path), filename=file_path.name, provider_id="gdrive", segment_time=5)
         
-        if result and result.get("url"):
-            tg_url = result["url"]
+        if not m3u8_path:
+            print(f"❌ Gagal memotong video {file_path.name}")
+            continue
+            
+        print(f"\n⏳ Mengunggah potongan HLS Episode {ep_num} ke Telegram Swarm...")
+        progress_key = f"ingest_progress:{anilist_id}:{ep_num}"
+        cloud_m3u8 = await uploader.process_hls_playlist_parallel(m3u8_path, progress_key=progress_key, max_workers=5)
+        
+        if not cloud_m3u8:
+            print(f"❌ Gagal mengunggah playlist ke Telegram")
+            continue
+            
+        # Upload index.m3u8
+        f_res = await uploader.upload_file(cloud_m3u8)
+        tg_url = f_res.get("url") if isinstance(f_res, dict) else None
+        
+        if tg_url:
             print(f"✅ Berhasil diunggah: {tg_url}")
+            await upstash_del(progress_key)
             
             # 5. Simpan ke Database
             try:
@@ -103,7 +123,7 @@ async def process_batch(anilist_id: int, url: str):
             except Exception as e:
                 print(f"❌ Gagal menyimpan ke DB: {e}")
         else:
-            print(f"❌ Gagal mengunggah {file_path.name}")
+            print(f"❌ Gagal mengunggah master playlist {file_path.name}")
             
     await database.disconnect()
     
