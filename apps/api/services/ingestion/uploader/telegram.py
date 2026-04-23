@@ -16,29 +16,39 @@ logger = logging.getLogger(__name__)
 # 5. The Cloudflare Worker proxy will stream the file by its 'file_id' via the getFile API.
 
 # Pool of bots for load balancing and avoiding Rate Limits
-# Format: {"token": "BOT_TOKEN", "proxy": "PROXY_URL"}
-BOT_POOL = [
-    {
-        "token": os.getenv("TELEGRAM_BOT_TOKEN"),
-        "proxy": os.getenv("TG_PROXY_BASE_URL", "").rstrip("/")
-    },
-    {
-        "token": os.getenv("TELEGRAM_BOT_TOKEN_2"),
-        "proxy": os.getenv("TG_PROXY_BASE_URL_2", "").rstrip("/")
-    }
-]
+# We dynamically load all TELEGRAM_BOT_TOKEN_* and pair them with available proxies
+def _get_bot_pool():
+    tokens = []
+    proxies = []
+    for k, v in os.environ.items():
+        if k.startswith("TELEGRAM_BOT_TOKEN") and v:
+            tokens.append(v)
+        if k.startswith("TG_PROXY_BASE_URL") and v:
+            proxies.append(v.rstrip("/"))
+            
+    # Default fallback proxy if none defined
+    if not proxies:
+        proxies = [""]
+        
+    pool = []
+    for token in tokens:
+        pool.append({
+            "token": token,
+            "proxy": random.choice(proxies)
+        })
+    return pool
 
 class TelegramUploader:
     def __init__(self):
         self.chat_id = os.getenv("TELEGRAM_CHAT_ID")
-        self.bot_pool = [b for b in BOT_POOL if b.get("token") and b.get("proxy")]
+        self.bot_pool = _get_bot_pool()
         
         if not self.bot_pool:
-            logger.warning("No valid bot tokens and proxies found in BOT_POOL. Uploader will fail.")
+            logger.warning("No valid bot tokens found in env. Uploader will fail.")
         if not self.chat_id:
             logger.warning("TELEGRAM_CHAT_ID not set. Uploader will fail.")
 
-    async def upload_file(self, file_path: str, max_retries: int = 3, bot: Optional[dict] = None) -> Optional[str]:
+    async def upload_file(self, file_path: str, max_retries: int = 5, bot: Optional[dict] = None) -> Optional[str]:
         """
         Uploads a single file to Telegram using a random bot from the pool.
         Returns the full proxy URL (proxy_url + file_id) if successful.
@@ -54,7 +64,7 @@ class TelegramUploader:
         endpoint = "sendVideo" if file_size > 10_000_000 else "sendDocument"
         url = f"https://api.telegram.org/bot{bot_token}/{endpoint}"
         
-        logger.info(f"Uploading {os.path.basename(file_path)} via {proxy_url.split('//')[-1].split('.')[0]}...")
+        logger.info(f"Uploading {os.path.basename(file_path)} via {proxy_url.split('//')[-1].split('.')[0] if proxy_url else 'Direct'} using bot ending in {bot_token[-4:]}...")
         
         for attempt in range(max_retries):
             try:
@@ -76,23 +86,34 @@ class TelegramUploader:
                                 
                             if file_id:
                                 # Return full proxy URL instead of just file_id
-                                return f"{proxy_url}/{file_id}"
+                                return f"{proxy_url}/{file_id}" if proxy_url else file_id
                                 
                         elif response.status_code == 429:
-                            # Too Many Requests
-                            retry_after = response.json().get("parameters", {}).get("retry_after", 2 ** attempt)
-                            wait = retry_after + random.uniform(0, 1)
+                            # Too Many Requests - Increased delay
+                            retry_after = response.json().get("parameters", {}).get("retry_after", 30)
+                            wait = retry_after + random.uniform(5, 15)
                             logger.warning(f"Rate limited (429) for {os.path.basename(file_path)}, waiting {wait:.1f}s")
                             await asyncio.sleep(wait)
+                            
+                            # Switch to a different bot on rate limit
+                            bot = random.choice(self.bot_pool)
+                            bot_token = bot["token"]
+                            url = f"https://api.telegram.org/bot{bot_token}/{endpoint}"
                             continue
                         else:
                             logger.error(f"Failed to upload {os.path.basename(file_path)}. HTTP {response.status_code}: {response.text}")
             except Exception as e:
                 logger.error(f"Exception during Telegram upload (attempt {attempt+1}): {str(e)}")
             
-            wait = 2 ** attempt + random.uniform(0, 1)
+            # Exponential backoff with higher base delay
+            wait = (2 ** attempt) * 5 + random.uniform(2, 5)
             logger.warning(f"Upload retry {attempt+1} for {os.path.basename(file_path)}, waiting {wait:.1f}s")
             await asyncio.sleep(wait)
+            
+            # Switch bot on retry to distribute load
+            bot = random.choice(self.bot_pool)
+            bot_token = bot["token"]
+            url = f"https://api.telegram.org/bot{bot_token}/{endpoint}"
 
         return None
 
