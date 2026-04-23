@@ -63,6 +63,21 @@ class UniversalExtractor:
         if 'wibufile' in url.lower() and url.endswith(('.mp4', '.m3u8')):
             return url
             
+        if 'api.wibufile.com/embed/' in url.lower():
+            # Wibufile requires a referer to avoid 'Access denied' iframe check
+            try:
+                # Guess referer based on likely origin, or just use a generic samehadaku referer
+                # since we only scrape samehadaku and oploverz
+                ref = "https://v2.samehadaku.how/"
+                res = await self.client.get(url, headers={"Referer": ref})
+                
+                # Check for sources: [{"file":"...mp4"}]
+                match = re.search(r'sources:\s*\[\{"file":"([^"]+)"', res.text)
+                if match:
+                    return match.group(1).replace('\\/', '/')
+            except Exception as e:
+                print(f"[Extractor] Wibufile embed extract error: {e}")
+            
         # Handle if the input is actually an iframe HTML string (like what wajik-anime-api generateSrcFromIframeTag does)
         if '<iframe' in url.lower():
             iframe_match = re.search(r'<iframe[^>]+src="([^"]+)"', url, re.IGNORECASE)
