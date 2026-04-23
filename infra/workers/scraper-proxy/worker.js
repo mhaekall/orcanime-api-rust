@@ -1,5 +1,4 @@
 // worker/src/index.js — Cloudflare Worker
-const PROXY_SECRET = "anime-pro-secure-2026"; // Match default in signed_url.py
 
 function base64UrlDecode(str) {
   str = str.replace(/-/g, '+').replace(/_/g, '/');
@@ -8,7 +7,8 @@ function base64UrlDecode(str) {
 }
 
 async function verifyAndDecode(token, sig, envSecret) {
-  const secret = envSecret || PROXY_SECRET;
+  if (!envSecret) throw new Error("PROXY_SECRET environment variable is missing");
+  const secret = envSecret;
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -29,11 +29,8 @@ async function verifyAndDecode(token, sig, envSecret) {
 
 // Keep the signSegmentUrl logic for rewriting m3u8
 async function signSegmentUrl(raw_url, provider_id, currentB64, currentSig, envSecret, workerBase) {
-  // Rather than signing dynamically on the edge (which requires secret again),
-  // we can just pass the upstream URL to the same endpoint? 
-  // Wait, the Architect said: return signSegmentUrl(segUrl, payload.p, match[1]);
-  // Since we are inside the worker, we can just encode and sign it again.
-  const secret = envSecret || PROXY_SECRET;
+  if (!envSecret) throw new Error("PROXY_SECRET environment variable is missing");
+  const secret = envSecret;
   const payloadStr = JSON.stringify({
     u: raw_url,
     p: provider_id,
@@ -57,6 +54,10 @@ async function signSegmentUrl(raw_url, provider_id, currentB64, currentSig, envS
 
 export default {
   async fetch(request, env, ctx) {
+    if (!env.PROXY_SECRET) {
+      return new Response("Server configuration error: PROXY_SECRET is missing", { status: 500 });
+    }
+
     if (request.method === "OPTIONS") {
       return new Response(null, {
         headers: {
@@ -76,7 +77,7 @@ export default {
       // Legacy fallback
       const proxyKey = request.headers.get("x-proxy-key") || url.searchParams.get("key");
       const targetUrl = url.searchParams.get("url");
-      if (proxyKey !== env.PROXY_SECRET && proxyKey !== PROXY_SECRET) {
+      if (proxyKey !== env.PROXY_SECRET) {
         return new Response("Not Found", { status: 404 });
       }
       if (!targetUrl) return new Response("Missing url", { status: 400 });
