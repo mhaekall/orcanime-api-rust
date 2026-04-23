@@ -5,7 +5,8 @@ WORKDIR /app
 # Install system dependencies including ffmpeg for video slicing
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    unrar \
+    unrar-free \
+    p7zip-full \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
