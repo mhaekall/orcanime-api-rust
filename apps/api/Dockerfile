@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     wget \
     tar \
+    unar \
     && rm -rf /var/lib/apt/lists/*
 
 RUN wget https://www.rarlab.com/rar/rarlinux-x64-621.tar.gz && \
