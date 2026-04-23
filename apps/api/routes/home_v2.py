@@ -200,14 +200,4 @@ async def get_home_v2(response: Response):
             "movies": [format_anime(r) for r in movies_rows],
             "trending": [format_anime(r) for r in trending_rows],
         }
-    }          "hero": [format_anime(r) for r in hero_rows],
-            "airing": [format_anime(r) for r in airing_rows],
-            "latest": [format_anime(r) for r in latest_rows],
-            "popular": [format_anime(r) for r in popular_rows],
-            "completed": [format_anime(r) for r in completed_rows],
-            "top_rated": [format_anime(r) for r in top_rated_rows],
-            "isekai": [format_anime(r) for r in isekai_rows],
-            "movies": [format_anime(r) for r in movies_rows],
-            "trending": [format_anime(r) for r in trending_rows],
-        }
     }
