@@ -51,7 +51,7 @@ async def get_home_v2(response: Response):
         JOIN episodes e ON m."anilistId" = e."anilistId"
         LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         WHERE m.status != 'FINISHED' OR m.status IS NULL
-        GROUP BY m."anilistId", c.title_preferred, m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score"
+        GROUP BY m."anilistId", c.id, c.title_preferred, m."cleanTitle", m."nativeTitle", m."coverImage", m."bannerImage", m."score"
         ORDER BY last_up DESC
         LIMIT 20
     '''
