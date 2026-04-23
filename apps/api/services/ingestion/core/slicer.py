@@ -11,7 +11,7 @@ class VideoSlicer:
         self.output_dir = output_dir or os.getenv("INGEST_HLS_TMP_DIR", "./tmp_ingest/hls")
         os.makedirs(self.output_dir, exist_ok=True)
 
-    async def slice(self, url: str, filename: str, provider_id: str = "", segment_time: int = 12) -> Optional[str]:
+    async def slice(self, url: str, filename: str, provider_id: str = "", segment_time: int = 5) -> Optional[str]:
         base_name = os.path.splitext(filename)[0]
         hls_dir = os.path.join(self.output_dir, base_name)
         if os.path.exists(hls_dir):

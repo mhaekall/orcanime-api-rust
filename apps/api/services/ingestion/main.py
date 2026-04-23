@@ -87,7 +87,7 @@ class IngestionEngine:
                 
                 # 2. Slice Video
                 print(f"[Ingestion] Slicing video...")
-                m3p = await self.slicer.slice(url=lvp, filename=filename, provider_id=provider_id, segment_time=12)
+                m3p = await self.slicer.slice(url=lvp, filename=filename, provider_id=provider_id, segment_time=5)
                 if not m3p: 
                     error_type = "slicing_failed"
                     return False, lvp, m3p, None
