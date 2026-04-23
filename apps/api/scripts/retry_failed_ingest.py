@@ -106,6 +106,10 @@ async def retry_failed():
                 if success:
                     # Clear progress key on success
                     upstash_del(key)
+                
+                # Wait 7 minutes before the next episode
+                logger.info("Waiting 7 minutes before next retry to avoid rate limits...")
+                await asyncio.sleep(420)
             else:
                 logger.error(f"Could not resolve direct URL for retry {anilist_id} Ep {episode_num}")
 
