@@ -24,9 +24,16 @@ interface Props {
   variant?: "vertical" | "horizontal";
   isNew?: boolean;
   totalEps?: number | null;
+  views?: number | null;
 }
 
-function AnimeCardInner({ id, title, img, banner, score, color, epId, rank, variant = "vertical", isNew, totalEps }: Props) {
+function formatViews(v: number): string {
+  if (v >= 1000000) return (v / 1000000).toFixed(1) + "M";
+  if (v >= 1000) return (v / 1000).toFixed(1) + "K";
+  return v.toString();
+}
+
+function AnimeCardInner({ id, title, img, banner, score, color, epId, rank, variant = "vertical", isNew, totalEps, views }: Props) {
   const accent = "#0A84FF";
   const { history } = useWatchHistory();
   const ref = useRef<HTMLDivElement>(null);
