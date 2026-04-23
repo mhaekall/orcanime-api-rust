@@ -25,6 +25,7 @@ async def process_batch(anilist_id: int, url: str):
     if "desustream" in url:
         await log_status(anilist_id, "Resolving desustream url...")
         url = await resolve_desustream(url)
+        await log_status(anilist_id, f"Resolved url: {url}")
         if not url:
             await log_status(anilist_id, "❌ Gagal meresolve Desustream URL.")
             return
@@ -58,15 +59,15 @@ async def process_batch(anilist_id: int, url: str):
     try:
         import subprocess
         if file_ext == ".rar":
-            # Extract RAR using unar directly
+            # Extract RAR using unrar directly
             process = await asyncio.create_subprocess_exec(
-                "unar", "-f", "-o", f"{extract_dir}/", archive_path,
+                "unrar", "x", "-y", archive_path, f"{extract_dir}/",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await process.communicate()
             if process.returncode != 0:
-                await log_status(anilist_id, f"❌ Gagal mengekstrak RAR dengan unar: {stderr.decode()} | {stdout.decode()}")
+                await log_status(anilist_id, f"❌ Gagal mengekstrak RAR dengan unrar: {stderr.decode()} | {stdout.decode()}")
                 return
         else:
             # zip fallback
