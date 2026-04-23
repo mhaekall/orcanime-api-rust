@@ -64,7 +64,7 @@ async def retry_failed():
                 
             if is_successful:
                 logger.info(f"Episode {anilist_id} Ep {episode_num} is SUCCESSFUL. Cleaning up progress key only.")
-                upstash_del(key)
+                await upstash_del(key)
                 continue
 
             # Not successful, let's retry. We need direct_url.
@@ -105,7 +105,7 @@ async def retry_failed():
                 logger.info(f"Retry Result {anilist_id} Ep {episode_num}: {success}")
                 if success:
                     # Clear progress key on success
-                    upstash_del(key)
+                    await upstash_del(key)
                 
                 # Wait 7 minutes before the next episode
                 logger.info("Waiting 7 minutes before next retry to avoid rate limits...")
