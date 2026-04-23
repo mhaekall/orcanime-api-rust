@@ -56,8 +56,21 @@ async def process_batch(anilist_id: int, url: str):
     
     await log_status(anilist_id, f"📦 Mengekstrak file arsip ke {extract_dir}...")
     try:
-        # patoolib berjalan secara synchronous, kita masukkan ke thread
-        await asyncio.to_thread(patoolib.extract_archive, archive_path, outdir=extract_dir)
+        import subprocess
+        if file_ext == ".rar":
+            # Extract RAR using unrar directly
+            process = await asyncio.create_subprocess_exec(
+                "unrar", "x", "-y", archive_path, f"{extract_dir}/",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            if process.returncode != 0:
+                await log_status(anilist_id, f"❌ Gagal mengekstrak RAR: {stderr.decode()}")
+                return
+        else:
+            # zip fallback
+            await asyncio.to_thread(patoolib.extract_archive, archive_path, outdir=extract_dir)
     except Exception as e:
         await log_status(anilist_id, f"❌ Gagal mengekstrak: {e}")
         return
