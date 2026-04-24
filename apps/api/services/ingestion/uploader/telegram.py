@@ -53,6 +53,15 @@ class TelegramUploader:
         Uploads a single file to Telegram using a random bot from the pool.
         Returns a dict with url, message_id, bot_token if successful.
         """
+        async def _debug(msg):
+            try:
+                from services.cache import client
+                from services.config import UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
+                import urllib.parse
+                await client.get(f"{UPSTASH_REDIS_REST_URL}/lpush/debug_tg_log/{urllib.parse.quote(msg)}", headers={"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}"})
+            except:
+                pass
+                
         if not self.bot_pool:
             return None
             
@@ -64,18 +73,21 @@ class TelegramUploader:
         endpoint = "sendVideo" if file_size > 10_000_000 else "sendDocument"
         url = f"https://api.telegram.org/bot{bot_token}/{endpoint}"
         
-        logger.info(f"Uploading {os.path.basename(file_path)} via {proxy_url.split('//')[-1].split('.')[0] if proxy_url else 'Direct'} using bot ending in {bot_token[-4:]}...")
+        await _debug(f"Uploading {os.path.basename(file_path)} using bot {bot_token[-4:]}...")
         
         for attempt in range(max_retries):
             try:
                 # Reduce timeout from 120.0 to 20.0 so we don't hang for 13 hours if Telegram API blackholes us
+                await _debug(f"Attempt {attempt+1}: connecting to telegram API")
                 async with httpx.AsyncClient(timeout=20.0) as client:
                     with open(file_path, "rb") as f:
                         file_key = "video" if endpoint == "sendVideo" else "document"
                         files = {file_key: (os.path.basename(file_path), f)}
                         data = {"chat_id": self.chat_id}
                         
+                        await _debug(f"Attempt {attempt+1}: posting {file_size} bytes")
                         response = await client.post(url, data=data, files=files)
+                        await _debug(f"Attempt {attempt+1}: got response {response.status_code}")
                         
                         if response.status_code == 200:
                             resp_json = response.json()
@@ -100,7 +112,7 @@ class TelegramUploader:
                             # Too Many Requests - Increased delay
                             retry_after = response.json().get("parameters", {}).get("retry_after", 30)
                             wait = retry_after + random.uniform(5, 15)
-                            logger.warning(f"Rate limited (429) for {os.path.basename(file_path)}, waiting {wait:.1f}s")
+                            await _debug(f"Rate limited (429) for {os.path.basename(file_path)}, waiting {wait:.1f}s")
                             await asyncio.sleep(wait)
                             
                             # Switch to a different bot on rate limit
@@ -109,13 +121,13 @@ class TelegramUploader:
                             url = f"https://api.telegram.org/bot{bot_token}/{endpoint}"
                             continue
                         else:
-                            logger.error(f"Failed to upload {os.path.basename(file_path)}. HTTP {response.status_code}: {response.text}")
+                            await _debug(f"Failed to upload {os.path.basename(file_path)}. HTTP {response.status_code}: {response.text}")
             except Exception as e:
-                logger.error(f"Exception during Telegram upload (attempt {attempt+1}): {str(e)}")
+                await _debug(f"Exception during Telegram upload (attempt {attempt+1}): {str(e)}")
             
             # Exponential backoff with higher base delay
             wait = (2 ** attempt) * 5 + random.uniform(2, 5)
-            logger.warning(f"Upload retry {attempt+1} for {os.path.basename(file_path)}, waiting {wait:.1f}s")
+            await _debug(f"Upload retry {attempt+1} for {os.path.basename(file_path)}, waiting {wait:.1f}s")
             await asyncio.sleep(wait)
             
             # Switch bot on retry to distribute load
