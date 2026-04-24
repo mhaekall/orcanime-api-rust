@@ -196,39 +196,48 @@ class TelegramUploader:
         logger.info(f"Starting parallel upload of {len(segment_lines)} segments with {max_workers} workers (Swarm Load Balancing)...")
         
         tasks = [_upload_task(idx, line) for idx, line in segment_lines]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for result in results:
-            if isinstance(result, tuple) and len(result) == 2:
-                idx, file_res = result
-                if file_res:
-                    if isinstance(file_res, dict):
-                        uploaded_segments[idx] = file_res["url"]
-                        if progress_key:
-                            existing_progress[str(idx)] = file_res
-                    elif isinstance(file_res, str):
-                        # Backwards compatibility
-                        uploaded_segments[idx] = file_res
-                        if progress_key:
-                            existing_progress[str(idx)] = file_res
-                else:
-                    logger.error(f"Failed to upload segment at line {idx}")
-            else:
-                logger.error(f"Segment generated an exception: {result}")
-
-        # Save progress incrementally
-        if progress_key and uploaded_segments:
+        
+        # We will use as_completed to save incremental progress to Redis
+        total_tasks = len(tasks)
+        completed_tasks = 0
+        
+        for coro in asyncio.as_completed(tasks):
             try:
-                try:
-                    from db.cache import upstash_set
-                except ImportError:
-                    try:
-                        from services.cache import upstash_set
-                    except ImportError:
-                        from apps.api.services.cache import upstash_set
-                await upstash_set(progress_key, existing_progress, ex=86400)
-            except Exception as e:
-                logger.warning(f"Failed to save progress incrementally: {e}")
+                result = await coro
+                completed_tasks += 1
+                
+                if isinstance(result, tuple) and len(result) == 2:
+                    idx, file_res = result
+                    if file_res:
+                        if isinstance(file_res, dict):
+                            uploaded_segments[idx] = file_res["url"]
+                            if progress_key:
+                                existing_progress[str(idx)] = file_res
+                        elif isinstance(file_res, str):
+                            # Backwards compatibility
+                            uploaded_segments[idx] = file_res
+                            if progress_key:
+                                existing_progress[str(idx)] = file_res
+                                
+                        # Log incremental progress to Upstash every 10 segments or at the end
+                        if progress_key and (completed_tasks % 10 == 0 or completed_tasks == total_tasks):
+                            try:
+                                try:
+                                    from db.cache import upstash_set
+                                except ImportError:
+                                    try:
+                                        from services.cache import upstash_set
+                                    except ImportError:
+                                        from apps.api.services.cache import upstash_set
+                                await upstash_set(progress_key, existing_progress, ex=86400)
+                            except Exception as e:
+                                pass
+                    else:
+                        logger.error(f"Failed to upload segment at line {idx}")
+                else:
+                    logger.error(f"Segment generated an exception: {result}")
+            except Exception as exc:
+                logger.error(f"Segment task failed with exception: {exc}")
 
         if len(uploaded_segments) < len(segment_lines):
             logger.error("Not all segments were uploaded successfully. Aborting playlist generation.")
