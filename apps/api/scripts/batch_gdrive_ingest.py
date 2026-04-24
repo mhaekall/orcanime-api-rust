@@ -130,7 +130,7 @@ async def _process_batch_impl(anilist_id: int, url: str):
             
         await log_status(anilist_id, f"⏳ Mengunggah potongan HLS Episode {ep_num} ke Telegram Swarm...")
         progress_key = f"ingest_progress:{anilist_id}:{ep_num}"
-        cloud_m3u8 = await uploader.process_hls_playlist_parallel(m3u8_path, progress_key=progress_key, max_workers=5)
+        cloud_m3u8 = await uploader.process_hls_playlist_parallel(m3u8_path, progress_key=progress_key, max_workers=3)
         
         if not cloud_m3u8:
             await log_status(anilist_id, "❌ Gagal mengunggah playlist ke Telegram")

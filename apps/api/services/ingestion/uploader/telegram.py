@@ -68,7 +68,8 @@ class TelegramUploader:
         
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
+                # Reduce timeout from 120.0 to 20.0 so we don't hang for 13 hours if Telegram API blackholes us
+                async with httpx.AsyncClient(timeout=20.0) as client:
                     with open(file_path, "rb") as f:
                         file_key = "video" if endpoint == "sendVideo" else "document"
                         files = {file_key: (os.path.basename(file_path), f)}
@@ -87,6 +88,8 @@ class TelegramUploader:
                                 
                             if file_id:
                                 final_url = f"{proxy_url}/{file_id}" if proxy_url else file_id
+                                # Success! Give Telegram API a tiny breather before the next worker slams it
+                                await asyncio.sleep(1)
                                 return {
                                     "url": final_url,
                                     "message_id": message_id,
