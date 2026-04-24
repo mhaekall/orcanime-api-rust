@@ -179,6 +179,17 @@ class TelegramUploader:
         uploaded_segments: Dict[int, str] = {}
         semaphore = asyncio.Semaphore(max_workers)
 
+        async def _debug_log(msg):
+            try:
+                from services.cache import client
+                from services.config import UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
+                import urllib.parse
+                await client.get(f"{UPSTASH_REDIS_REST_URL}/lpush/debug_tg_log/{urllib.parse.quote(msg)}", headers={"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}"})
+            except:
+                pass
+        
+        await _debug_log(f"Starting parallel upload tasks for {len(segment_lines)} lines")
+
         # Do NOT select a single bot. We pass bot=None to upload_file
         # so it picks a random bot for EACH segment, enabling true Swarm Load Balancing.
 
@@ -191,9 +202,12 @@ class TelegramUploader:
                 logger.error(f"Segment missing locally: {os.path.basename(segment_path)}")
                 return index, None
             
+            await _debug_log(f"Task {index}: waiting for semaphore")
             async with semaphore:
+                await _debug_log(f"Task {index}: acquired semaphore, uploading {segment_path}")
                 # Force upload_file to pick a random bot
                 file_res = await self.upload_file(segment_path, bot=None)
+                await _debug_log(f"Task {index}: finished upload with result {bool(file_res)}")
                 return index, file_res
 
         logger.info(f"Starting parallel upload of {len(segment_lines)} segments with {max_workers} workers (Swarm Load Balancing)...")
@@ -204,6 +218,7 @@ class TelegramUploader:
         total_tasks = len(tasks)
         completed_tasks = 0
         
+        await _debug_log(f"Entering as_completed loop with {total_tasks} tasks")
         for coro in asyncio.as_completed(tasks):
             try:
                 result = await coro
