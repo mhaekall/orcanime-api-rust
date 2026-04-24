@@ -176,10 +176,25 @@ class VideoFetcher:
         output_path = os.path.join(self.output_dir, output_filename)
         logger.info(f"[Fetcher] Target: {url[:80]}...")
 
-        # Skip kalau file sudah ada dan valid
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
-            logger.info(f"[Fetcher] Sudah ada, skip: {output_path}")
-            return output_path
+        headers = _make_headers(url)
+        
+        # Determine file size first to verify existing file
+        file_size = None
+        if not ".m3u8" in url.lower():
+            file_size = await _get_file_size(url, headers)
+
+        # Skip kalau file sudah ada dan ukurannya sama persis (atau m3u8 yang sulit dicek ukurannya tapi filenya lumayan besar)
+        if os.path.exists(output_path):
+            local_size = os.path.getsize(output_path)
+            if file_size and local_size == file_size:
+                logger.info(f"[Fetcher] Sudah ada dan ukuran cocok ({local_size} bytes), skip download: {output_path}")
+                return output_path
+            elif not file_size and local_size > 1024 * 1024: # Asumsi > 1MB cukup untuk m3u8 hasil ffmpeg
+                logger.info(f"[Fetcher] Sudah ada (HLS/Unknown Size) > 1MB, skip download: {output_path}")
+                return output_path
+            else:
+                logger.info(f"[Fetcher] File corrupt/incomplete (Local: {local_size}, Server: {file_size}). Menghapus file lama...")
+                os.remove(output_path)
 
         # HLS → langsung FFmpeg
         if ".m3u8" in url.lower():

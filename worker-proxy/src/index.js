@@ -62,7 +62,7 @@ const MP4_PATTERNS = [
   /file\s*:\s*['"](https?:\/\/[^'"]+\.mp4[^'"]*)['"]/i,
   /"src"\s*:\s*"(https?:\/\/[^"]+\.mp4[^"]*)"/i,
   // Generic
-  /https?:\/\/[^\s"'<>]+\.mp4(?:\?[^\s"'<>]*)?/gi,
+  /https?:\/\/[^\s"'<>]+\.mp4(?!\w)(?:\?[^\s"'<>]*)?/gi,
 ];
 
 function extractMp4FromHtml(html) {

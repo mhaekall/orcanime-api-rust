@@ -77,9 +77,10 @@ class TelegramUploader:
         
         for attempt in range(max_retries):
             try:
-                # Reduce timeout from 120.0 to 20.0 so we don't hang for 13 hours if Telegram API blackholes us
+                # Increase timeout to 120.0 so we don't timeout on slow Android/Termux connections while uploading large chunks
                 await _debug(f"Attempt {attempt+1}: connecting to telegram API")
-                async with httpx.AsyncClient(timeout=20.0) as client:
+                transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+                async with httpx.AsyncClient(transport=transport, timeout=120.0) as client:
                     with open(file_path, "rb") as f:
                         file_key = "video" if endpoint == "sendVideo" else "document"
                         files = {file_key: (os.path.basename(file_path), f)}

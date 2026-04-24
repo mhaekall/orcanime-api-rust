@@ -8,7 +8,6 @@ import { IconPlay, IconPause, IconFullscreen, IconVolume, IconSettings } from "@
 import { useSettings } from "@/core/stores/app-store";
 import { useWatchHistory } from "@/core/hooks/use-watch-history";
 import { useVideoGestures } from "@/core/hooks/use-video-gestures";
-import { useFetchVideoUrl } from "@/core/hooks/use-fetch-video";
 import type { VideoSource } from "@/core/types/anime";
 
 const QUALITY_ORDER = ["1080p", "720p", "480p", "360p", "Auto"];
@@ -126,12 +125,7 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
 
   const { containerRef, handleTouchStart, ripple } = useVideoGestures(videoRef);
 
-  // Hook Proxy untuk mengekstrak iframe (Mp4Upload, dll.)
   const isIframe = current?.type === "iframe";
-  const { videoUrl: proxyVideoUrl, loading: proxyLoading, error: proxyError } = useFetchVideoUrl(
-    isIframe ? current?.url : null,
-    { enabled: isIframe }
-  );
 
   useEffect(() => {
     if (!current && defaultSrc) setCurrent(defaultSrc);
@@ -215,17 +209,10 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
 
   useEffect(() => { 
     if (current) {
-      if (current.type === "iframe") {
-        if (proxyVideoUrl) {
-          // Jika proxy berhasil membongkar iframe menjadi .mp4, muat mp4 tersebut
-          loadSource({ ...current, url: proxyVideoUrl, type: 'mp4' }, undefined, isAuto);
-        }
-      } else {
-        loadSource(current, undefined, isAuto); 
-      }
+      loadSource(current, undefined, isAuto); 
     }
     return () => hlsRef.current?.destroy(); 
-  }, [current, loadSource, isAuto, proxyVideoUrl]);
+  }, [current, loadSource, isAuto]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -486,23 +473,16 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
         </div>
       )}
 
-      {loading && !error && !proxyLoading && <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none z-40"><div className="w-10 h-10 border-3 border-white/20 border-t-white rounded-full anim-spin" /></div>}
-      
-      {proxyLoading && !error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 pointer-events-none z-40 backdrop-blur-sm">
-          <div className="w-12 h-12 border-4 border-[#0a84ff]/20 border-t-[#0a84ff] rounded-full anim-spin mb-4" />
-          <span className="text-white text-sm font-semibold tracking-wide animate-pulse">Mengekstrak Video dari {current?.provider}...</span>
-        </div>
-      )}
+      {loading && !error && <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none z-40"><div className="w-10 h-10 border-3 border-white/20 border-t-white rounded-full anim-spin" /></div>}
 
-      {(error || proxyError) && (
+      {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-3 p-6 text-center z-40">
-          <p className="text-[#ff453a] text-sm font-bold bg-[#ff453a]/10 px-4 py-2 rounded-lg border border-[#ff453a]/20">{error || proxyError}</p>
+          <p className="text-[#ff453a] text-sm font-bold bg-[#ff453a]/10 px-4 py-2 rounded-lg border border-[#ff453a]/20">{error}</p>
           <button onClick={() => window.location.reload()} className="px-6 py-2 mt-2 bg-white hover:bg-gray-200 transition-colors text-black text-xs font-bold rounded-full">Muat Ulang Halaman</button>
         </div>
       )}
 
-      {controls && !loading && !error && !proxyLoading && !proxyError && (
+      {controls && !loading && !error && (
         <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
           <div className="flex items-center justify-center gap-6 md:gap-12 pointer-events-auto" onClick={(e) => { e.stopPropagation(); toggleControls(e); }}>
             {onPrevious ? (
@@ -531,20 +511,11 @@ function VideoPlayerInner({ anilistId, title, poster, sources, animeSlug, episod
                  <button onClick={() => setShowSettings(false)} className="text-[#8e8e93] hover:text-white transition-colors p-1"><IconSettings className="w-3.5 h-3.5" /></button>
               </div>
               
-              <div className="flex flex-col gap-0.5 mb-1 border-b border-white/5 pb-1">
-                {direct.map((s, idx) => (
-                  <button 
-                    key={idx} 
-                    onClick={() => switchQ(s)} 
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl transition-colors ${current?.url === s.url ? 'bg-white/10 text-[#0a84ff]' : 'text-white/80 hover:bg-white/5'}`}
-                  >
-                    <div className="flex flex-col items-start">
-                      <span className="text-sm font-semibold">{s.quality}</span>
-                      <span className="text-[10px] text-white/50">{s.provider} {s.type === 'iframe' ? '(Proxy)' : ''}</span>
-                    </div>
-                    {current?.url === s.url && <div className="w-1.5 h-1.5 rounded-full bg-[#0a84ff] shadow-[0_0_8px_#0a84ff]" />}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between px-3 py-3 rounded-xl transition-colors group">
+                <div className="flex flex-col items-start">
+                  <span className="text-white text-sm font-semibold">Kualitas</span>
+                  <span className={`text-[11px] font-bold ${(current?.url?.includes('tg-proxy') || current?.provider?.toLowerCase().includes('telegram')) ? 'text-[#0a84ff]' : 'text-white'}`}>Auto HD</span>
+                </div>
               </div>
 
               <button onClick={() => setMenuView("speed")} className="flex items-center justify-between px-3 py-3 rounded-xl hover:bg-white/10 transition-colors group mt-0.5">

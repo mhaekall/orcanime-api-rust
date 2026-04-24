@@ -92,7 +92,15 @@ export default {
   }
 };
 
-async function handleProxy(upstream, request, env, payload, match) {
+async function handleProxy(upstreamRaw, request, env, payload, match) {
+  let upstream = upstreamRaw;
+  let customCookie = null;
+  if (upstreamRaw.includes('|')) {
+    const parts = upstreamRaw.split('|', 2);
+    upstream = parts[0];
+    customCookie = parts[1];
+  }
+
   const isM3U8 = upstream.split('?')[0].endsWith('.m3u8') || upstream.includes('.m3u8');
   
   // Dynamic Referer based on provider
@@ -101,6 +109,8 @@ async function handleProxy(upstream, request, env, payload, match) {
     referer = "https://kuronime.sbs/";
   } else if (payload && payload.p === "samehadaku") {
     referer = "https://samehadaku.mov/";
+  } else if (upstream.includes("gofile.io")) {
+    referer = "https://gofile.io/";
   }
 
   const headers = { 
@@ -108,6 +118,10 @@ async function handleProxy(upstream, request, env, payload, match) {
     "Referer": referer,
     "Origin": new URL(referer).origin
   };
+
+  if (customCookie) {
+    headers["Cookie"] = customCookie;
+  }
   
   const range = request.headers.get("Range");
   if (range) headers["Range"] = range;

@@ -298,27 +298,12 @@ class UniversalExtractor:
                     print(f"[Extractor] TLS fallback error for streamtape: {e}")
 
             elif 'mp4upload' in url:
-                try:
-                    res = await self.client.get(url)
-                    html = res.text
-                except Exception:
-                    html = ""
-                
-                match = re.search(r'"file":"(https?://[^"]+\.mp4[^"]*)"', html)
-                if match: return match.group(1).replace('\\/', '/')
-                
-                # Fallback ke curl_cffi
-                try:
-                    html = await self._tls.get(url)
-                    match = re.search(r'"file":"(https?://[^"]+\.mp4[^"]*)"', html)
-                    if match: return match.group(1).replace('\\/', '/')
-                    
-                    smart_ex = SmartExtractor()
-                    res_smart = smart_ex.extract_from_html(html)
-                    if res_smart: return res_smart
-                except Exception as e:
-                    print(f"[Extractor] TLS fallback error for mp4upload: {e}")
-            elif 'dood' in url or 'doodstream' in url or 'filelions' in url or 'streamwish' in url or 'vidhide' in url:
+                # IMPORTANT: DO NOT extract mp4upload on the backend!
+                # Mp4Upload uses strict IP-Binding. If the backend extracts the .mp4, 
+                # the URL will be bound to the backend's IP, causing 403 on the frontend.
+                # Just return the embed URL so the frontend CF Worker can extract it.
+                return url
+            elif 'dood' in url or 'doodstream' in url or 'filelions' in url or 'streamwish' in url or 'vidhide' in url or 'dsvplay' in url:
                 try:
                     # Leverage yt-dlp for heavily obfuscated hosts
                     print(f"[Extractor] Using yt-dlp for {url}")

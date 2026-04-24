@@ -13,8 +13,7 @@ async def download_gdrive(url: str, output_path: str):
             gdown.download, 
             url, 
             output_path, 
-            quiet=False, 
-            fuzzy=True
+            quiet=False
         )
         if success:
             print(f"\n✅ Berhasil mengunduh ke '{output_path}'")
