@@ -5,6 +5,14 @@ from db.models import anime_mappings, anime_metadata
 async def upsert_anime_db(anilist_data, provider_id: str, provider_slug: str):
     if not anilist_data or not anilist_data.get('anilistId'):
         return
+        
+    # BLOKIR OTOMATIS GENRE HENTAI
+    genres = anilist_data.get('genres', [])
+    if isinstance(genres, list):
+        if any('hentai' in str(g).lower() for g in genres):
+            print(f"[BLOCKED] Mengabaikan anime Hentai: {anilist_data.get('cleanTitle', '')} ({provider_id})")
+            return
+            
     try:
         # ── METADATA RECONCILIATION LOGIC ──
         # If AniList says 'NOT_YET_RELEASED', but we know we are scraping episodes for it, 
