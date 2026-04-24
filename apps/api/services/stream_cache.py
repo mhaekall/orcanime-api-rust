@@ -374,17 +374,19 @@ async def _live_scrape(episode_url: str, provider_id: str) -> Optional[CachedPay
                 return None
 
         resolved_lower = resolved.lower()
+        original_type = src.get("type", "")
+        
         is_direct = (
-            any(resolved.split("?")[0].endswith(ext) for ext in (".m3u8", ".mp4", ".webm"))
-            or "googlevideo.com/videoplayback" in resolved_lower
-            or "kuroplayer.xyz"               in resolved_lower
-            or ".mp4"                         in resolved_lower
-            or ".m3u8"                        in resolved_lower
-        )
-        video_type = (
-            "hls" if ".m3u8" in resolved_lower
-            else ("mp4" if is_direct else "iframe")
-        )
+            ("mp4upload" not in resolved_lower and "doodstream" not in resolved_lower and "dsvplay" not in resolved_lower) and (
+                any(resolved.split("?")[0].endswith(ext) for ext in (".m3u8", ".mp4", ".webm"))
+                or "googlevideo.com/videoplayback" in resolved_lower
+                or "kuroplayer.xyz"               in resolved_lower
+                or ".mp4"                         in resolved_lower
+                or ".m3u8"                        in resolved_lower
+            )
+        ) or ("direct" in original_type)
+        
+        video_type = original_type if "direct" in original_type else ("hls" if ".m3u8" in resolved_lower else ("mp4" if is_direct else "iframe"))
         final_url = resolved if is_direct else raw_url
 
         return {

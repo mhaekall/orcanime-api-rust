@@ -414,20 +414,24 @@ async def resolve_episode_sources(episode_url: str, provider_id: str) -> dict:
 
             # Accept as-is if it looks like a direct video already
             resolved_lower = resolved.lower()
+            original_type = src.get("type", "")
+            
             is_direct = (
-                any(resolved.split("?")[0].endswith(ext) for ext in (".m3u8", ".mp4", ".webm"))
-                or "googlevideo.com/videoplayback" in resolved_lower
-                or "kuroplayer.xyz" in resolved_lower
-                or ".mp4" in resolved_lower
-                or ".m3u8" in resolved_lower
-            )
+                ("mp4upload" not in resolved_lower and "doodstream" not in resolved_lower and "dsvplay" not in resolved_lower) and (
+                    any(resolved.split("?")[0].endswith(ext) for ext in (".m3u8", ".mp4", ".webm"))
+                    or "googlevideo.com/videoplayback" in resolved_lower
+                    or "kuroplayer.xyz" in resolved_lower
+                    or ".mp4" in resolved_lower
+                    or ".m3u8" in resolved_lower
+                )
+            ) or ("direct" in original_type)
             
             if not is_direct:
                 video_type = "iframe"
                 final_url = raw_url
             else:
-                # Use HLS for .m3u8 or KuroPlayer, else MP4
-                video_type = "hls" if (".m3u8" in resolved_lower or "kuroplayer" in resolved_lower) else "mp4"
+                # Use HLS for .m3u8 or KuroPlayer, else MP4. If it was already direct, use the original type.
+                video_type = original_type if "direct" in original_type else ("hls" if (".m3u8" in resolved_lower or "kuroplayer" in resolved_lower) else "mp4")
                 final_url = resolved
 
             return {
@@ -448,7 +452,7 @@ async def resolve_episode_sources(episode_url: str, provider_id: str) -> dict:
 
         from utils.signed_url import sign_stream_url
         for source in final_sources:
-            if source.get("type") in ("hls", "mp4", "direct"):
+            if source.get("type") in ("hls", "mp4", "direct", "mp4 (direct)", "hls (direct)"):
                 source["raw_url"] = source["url"]
                 source["url"] = sign_stream_url(source["raw_url"], provider_id, source["quality"])
                 source["proxied"] = True
