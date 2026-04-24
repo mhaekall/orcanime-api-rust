@@ -60,7 +60,7 @@ async def ingest_pending(limit: int):
                     direct_url = s.get("raw_url") or s.get("url", "")
                     provider_id = s.get("source", "unknown")
                     break
-            
+
             # Fallback to first available direct stream if 720p not found
             if not direct_url:
                 for s in sources_response["sources"]:
@@ -68,12 +68,11 @@ async def ingest_pending(limit: int):
                         direct_url = s.get("raw_url") or s.get("url", "")
                         provider_id = s.get("source", "unknown")
                         break
-            
-            # If still nothing, just grab the first one (though it might be iframe)
+
             if not direct_url:
-                direct_url = sources_response["sources"][0].get("url", "")
-                provider_id = sources_response["sources"][0].get("source", "unknown")
-                
+                print(f"⚠️ Melewati {aid} Ep {ep_num} karena tidak memiliki Direct Stream murni (hanya ada Iframe).")
+                continue
+
             print(f"Direct URL found: {direct_url[:50]}...")
             
             if direct_url and "tg-proxy" not in direct_url:
