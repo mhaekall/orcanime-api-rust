@@ -977,7 +977,7 @@ async def get_cached_stream(
             result["usedProvider"] = row["providerId"]
 
             # Trigger ingestion ke Telegram jika ada direct link (fire-and-forget)
-            direct = [s for s in result["sources"] if s.get("type") in ("hls", "mp4", "direct")]
+            direct = [s for s in result["sources"] if s.get("type") in ("hls", "mp4", "direct", "mp4 (direct)", "hls (direct)")]
             if direct:
                 raw_url = direct[0].get("raw_url") or direct[0].get("url", "")
                 if raw_url and "workers.dev" not in raw_url and "tg-proxy" not in raw_url:
