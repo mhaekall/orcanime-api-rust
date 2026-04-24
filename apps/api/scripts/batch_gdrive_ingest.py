@@ -59,8 +59,20 @@ async def process_batch(anilist_id: int, url: str):
     try:
         import subprocess
         if file_ext == ".rar":
-            # Coba unar untuk mengekstrak RAR (lebih stabil di debian repo)
-            cmd = f"unar -f -o '{extract_dir}/' '{archive_path}'"
+            unrar_path = "/tmp/rar/unrar"
+            if not os.path.exists(unrar_path):
+                await log_status(anilist_id, "Mengunduh binary unrar rarlab secara dinamis...")
+                import urllib.request
+                import tarfile
+                await asyncio.to_thread(urllib.request.urlretrieve, "https://www.rarlab.com/rar/rarlinux-x64-621.tar.gz", "/tmp/rar.tar.gz")
+                def extract_tar():
+                    with tarfile.open("/tmp/rar.tar.gz") as tar:
+                        tar.extractall(path="/tmp/")
+                await asyncio.to_thread(extract_tar)
+                os.chmod(unrar_path, 0o777)
+
+            # Extract RAR using dynamically downloaded unrar
+            cmd = f"{unrar_path} x -y '{archive_path}' '{extract_dir}/'"
             process = await asyncio.create_subprocess_shell(
                 cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -68,7 +80,7 @@ async def process_batch(anilist_id: int, url: str):
             )
             stdout, stderr = await process.communicate()
             if process.returncode != 0:
-                await log_status(anilist_id, f"❌ Gagal mengekstrak RAR dengan unar: {stderr.decode()} | {stdout.decode()}")
+                await log_status(anilist_id, f"❌ Gagal mengekstrak RAR dengan unrar dinamis: {stderr.decode()} | {stdout.decode()}")
                 return
         else:
             # zip fallback
