@@ -555,6 +555,21 @@ async def get_anime_detail(anilist_id: int) -> Optional[dict]:
             except Exception:
                 pass
 
+    # Filter recommendations to ONLY include anime that actually have episodes in our DB
+    if meta_dict.get("recommendations"):
+        rec_ids = [r["id"] for r in meta_dict["recommendations"] if r.get("id")]
+        if rec_ids:
+            try:
+                valid_rows = await database.fetch_all(
+                    'SELECT DISTINCT "anilistId" FROM episodes WHERE "anilistId" = ANY(:ids)',
+                    values={"ids": rec_ids}
+                )
+                valid_ids = {r["anilistId"] for r in valid_rows}
+                meta_dict["recommendations"] = [r for r in meta_dict["recommendations"] if r.get("id") in valid_ids]
+            except Exception as e:
+                print(f"[Pipeline] Failed to filter recommendations: {e}")
+                meta_dict["recommendations"] = []
+
     return {
         **meta_dict,
         "episodes": [dict(e) for e in eps],
