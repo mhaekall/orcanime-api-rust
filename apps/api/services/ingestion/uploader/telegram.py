@@ -132,7 +132,9 @@ class TelegramUploader:
                     else:
                         await _debug(f"Failed to upload {os.path.basename(file_path)}. HTTP {response.status_code}: {response.text}")
             except Exception as e:
-                await _debug(f"Exception during Telegram upload (attempt {attempt+1}): {repr(e)}")
+                import traceback
+                tb_str = traceback.format_exc()
+                await _debug(f"Exception during Telegram upload (attempt {attempt+1}): {repr(e)} - Traceback: {tb_str[:500]}")
             
             # Exponential backoff with higher base delay
             wait = (2 ** attempt) * 5 + random.uniform(2, 5)
