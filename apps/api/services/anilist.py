@@ -275,6 +275,7 @@ async def fetch_anilist_info(title: str):
                 'anilistId': media['id'],
                 'mal_id': media.get('idMal'),
                 'cleanTitle': media['title']['english'] or media['title']['romaji'],
+                'romajiTitle': media['title'].get('romaji'),
                 'nativeTitle': media['title'].get('native'),
                 'synonyms': media.get('synonyms', []),
                 'hdImage': media['coverImage']['extraLarge'] or media['coverImage']['large'],

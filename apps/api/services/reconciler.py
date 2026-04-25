@@ -184,6 +184,26 @@ class AnimeReconciler:
             _normalize(b),
         ).ratio()
 
+    @classmethod
+    def _get_best_score(cls, raw_title: str, anilist_data: dict) -> float:
+        titles_to_check = []
+        if anilist_data.get("cleanTitle"):
+            titles_to_check.append(anilist_data["cleanTitle"])
+        if anilist_data.get("nativeTitle"):
+            titles_to_check.append(anilist_data["nativeTitle"])
+        if anilist_data.get("romajiTitle"):
+            titles_to_check.append(anilist_data["romajiTitle"])
+        if anilist_data.get("synonyms"):
+            titles_to_check.extend(anilist_data["synonyms"])
+            
+        best_score = 0.0
+        for t in titles_to_check:
+            if not t: continue
+            score = cls._difflib_score(raw_title, t)
+            if score > best_score:
+                best_score = score
+        return best_score
+
     @staticmethod
     async def _get_existing_mapping(
         provider_id: str, provider_slug: str
@@ -363,8 +383,8 @@ class AnimeReconciler:
                 candidate.confidence  = 1.0
                 candidate.matched_via = "exact"
             else:
-                score = self._difflib_score(raw_title, new_title)
-                matched_via = "difflib"
+                score = self._get_best_score(raw_title, anilist_data)
+                matched_via = "difflib_extended"
 
                 if score < DIFFLIB_THRESHOLD:
                     gemini_match = False
@@ -437,13 +457,15 @@ class AnimeReconciler:
                 migrated_records=migrated,
             )
         else:
-            score       = self._difflib_score(raw_title, new_title)
-            matched_via = "difflib"
+            score       = self._get_best_score(raw_title, anilist_data)
+            matched_via = "difflib_extended"
 
             if score < DIFFLIB_THRESHOLD:
                 alt = [new_title]
                 if anilist_data.get("nativeTitle"):
                     alt.append(anilist_data["nativeTitle"])
+                if anilist_data.get("synonyms"):
+                    alt.extend(anilist_data["synonyms"])
                 gemini_match, _ = await GeminiMatcher.is_same_anime(raw_title, alt)
                 matched_via     = "gemini"
                 if not gemini_match:
