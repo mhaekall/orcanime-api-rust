@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ── Konfigurasi ────────────────────────────────────────────────────────────
-CHUNK_WORKERS   = 4      # Koneksi paralel — sweet spot, tidak terlalu agresif
+CHUNK_WORKERS   = 3      # Diturunkan ke 3 (jika 2 proses jalan, total 6 workers) agar balance antara speed dan RAM Android
 CHUNK_SIZE_MB   = 10     # Ukuran tiap chunk dalam MB
 CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT    = 60.0

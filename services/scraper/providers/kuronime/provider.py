@@ -92,7 +92,7 @@ class KuronimeProvider(BaseProvider):
                         decrypted_json = json.loads(decrypted_str)
                         src_url = decrypted_json.get("src")
                         print(f"[Kuronime Debug] Found src_url: {src_url}")
-                        if src_url:
+                        if src_url and 'kuroplayer.xyz' not in src_url:
                             sources.append({
                                 "provider": "KuroPlayer",
                                 "quality": quality,
