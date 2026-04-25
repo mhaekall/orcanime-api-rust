@@ -13,6 +13,15 @@ async def upsert_anime_db(anilist_data, provider_id: str, provider_slug: str):
             print(f"[BLOCKED] Mengabaikan anime Hentai: {anilist_data.get('cleanTitle', '')} ({provider_id})")
             return
             
+    # OTOMATIS TAMBAHKAN GENRE ISEKAI JIKA SINOPSIS/JUDUL MENDUKUNG
+    synopsis = anilist_data.get('description') or ""
+    title = anilist_data.get('cleanTitle') or ""
+    isekai_keywords = ['isekai', 'reincarnat', 'another world']
+    if any(kw in synopsis.lower() or kw in title.lower() for kw in isekai_keywords):
+        if "Isekai" not in genres:
+            genres.append("Isekai")
+            anilist_data['genres'] = genres
+            
     try:
         # ── METADATA RECONCILIATION LOGIC ──
         # If AniList says 'NOT_YET_RELEASED', but we know we are scraping episodes for it, 
