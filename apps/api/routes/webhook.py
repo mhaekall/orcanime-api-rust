@@ -121,6 +121,14 @@ async def _run_ingestion_bg(episode_id, anilist_id, provider_id, episode_number,
             await upstash_set(f"ingest_error:{anilist_id}:{episode_number}", f"{str(e)}\n{traceback.format_exc()}")
         except:
             pass
+    finally:
+        try:
+            from services.cache import client as redis_client
+            from services.config import UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
+            await redis_client.get(f"{UPSTASH_REDIS_REST_URL}/del/global_ingest_lock", headers={"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}"})
+            print("[Webhook] Global ingestion lock released.")
+        except:
+            pass
 
 @router.post("/webhook/ingest")
 async def ingest_webhook(request: Request):
@@ -133,12 +141,29 @@ async def ingest_webhook(request: Request):
         episode_number = payload.get("episode_number")
         direct_url = payload.get("direct_url")
         
+        # --- GLOBAL LOCK CHECK ---
+        try:
+            from services.cache import client as redis_client
+            from services.config import UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
+            lock_url = f"{UPSTASH_REDIS_REST_URL}/set/global_ingest_lock/1?NX=true&EX=3600"
+            res = await redis_client.get(lock_url, headers={"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}"})
+            if res.status_code == 200:
+                if res.json().get("result") != "OK":
+                    print(f"[Webhook] Concurrent ingestion blocked for Anime: {anilist_id} Ep: {episode_number}. Returning 429.")
+                    raise HTTPException(status_code=429, detail="Another ingestion is in progress. QStash will retry later.")
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[Webhook] Failed to check global lock: {e}")
+            
         print(f"[Webhook] Executing Ingestion for anilistId={anilist_id} Ep={episode_number}")
         
         # Jalankan di latar belakang agar QStash tidak timeout
         asyncio.create_task(_run_ingestion_bg(episode_id, anilist_id, provider_id, episode_number, direct_url))
         
         return Response(status_code=200, content="Ingestion Queued")
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[Webhook] Error processing ingestion payload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
