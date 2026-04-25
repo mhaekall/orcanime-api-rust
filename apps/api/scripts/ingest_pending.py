@@ -14,9 +14,9 @@ from db.connection import database as db
 from services.ingestion.main import IngestionEngine
 from services.stream_cache import get_cached_stream
 
-async def ingest_pending(limit: int = 50):
+async def ingest_pending(limit: int = 5000):
     # Mengabaikan limit dari parameter lama agar kita bisa memproses lebih banyak secara batch
-    limit = 50 
+    limit = 5000 
     
     print(f"🚀 Memulai HF Space Worker Ingestion: Mencari maksimal {limit} episode tertunda...")
     
