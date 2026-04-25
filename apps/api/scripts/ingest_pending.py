@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import argparse
+import time
 from dotenv import load_dotenv
 
 API_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -13,23 +14,26 @@ from db.connection import database as db
 from services.ingestion.main import IngestionEngine
 from services.stream_cache import get_cached_stream
 
-async def ingest_pending(limit: int):
-    print(f"🚀 Memulai GitHub Actions Worker: Mencari maksimal {limit} episode tertunda...")
+async def ingest_pending(limit: int = 50):
+    # Mengabaikan limit dari parameter lama agar kita bisa memproses lebih banyak secara batch
+    limit = 50 
     
-    # Pastikan database terkoneksi sebelum dipakai di query dan get_cached_stream
+    print(f"🚀 Memulai HF Space Worker Ingestion: Mencari maksimal {limit} episode tertunda...")
+    
     should_disconnect = False
     if not db.is_connected:
         await db.connect()
         should_disconnect = True
         
     # Cari episode yang URL-nya belum tg-proxy
+    # Diurutkan berdasarkan anilistId (Anime yang sama) lalu episodeNumber secara berurutan
     query = """
         SELECT id, "anilistId", "episodeNumber", "episodeUrl" 
         FROM episodes 
         WHERE "episodeUrl" NOT LIKE '%tg-proxy%' 
         AND "episodeUrl" NOT LIKE '%workers.dev%'
         AND "episodeUrl" LIKE 'http%'
-        ORDER BY "updatedAt" DESC 
+        ORDER BY "anilistId" ASC, "episodeNumber" ASC
         LIMIT :limit
     """
     rows = await db.fetch_all(query, values={"limit": limit})
@@ -40,6 +44,9 @@ async def ingest_pending(limit: int):
             await db.disconnect()
         return
 
+    print(f"Ditemukan {len(rows)} episode antrean. Memproses SATU PER SATU secara berurutan (Hard Stitch)...")
+    print("-" * 50)
+
     engine = IngestionEngine()
     
     for row in rows:
@@ -47,7 +54,10 @@ async def ingest_pending(limit: int):
         aid = row['anilistId']
         ep_num = float(row['episodeNumber'])
         
-        print(f"\n--- Memproses {aid} Ep {ep_num} ---")
+        anime_row = await db.fetch_one('SELECT "cleanTitle" FROM anime_metadata WHERE "anilistId" = :aid', {"aid": aid})
+        title = anime_row["cleanTitle"] if anime_row else f"Anime {aid}"
+        
+        print(f"\n📺 [{time.strftime('%H:%M:%S')}] Memproses Ingest: {title} - Episode {ep_num}")
         
         sources_response = await get_cached_stream(aid, ep_num)
         if sources_response and "sources" in sources_response and len(sources_response["sources"]) > 0:
@@ -70,31 +80,45 @@ async def ingest_pending(limit: int):
                         break
 
             if not direct_url:
-                print(f"⚠️ Melewati {aid} Ep {ep_num} karena tidak memiliki Direct Stream murni (hanya ada Iframe).")
+                print(f"⚠️ Melewati Ep {ep_num} karena tidak memiliki Direct Stream murni (hanya ada Iframe).")
                 continue
 
-            print(f"Direct URL found: {direct_url[:50]}...")
+            if "tg-proxy" in direct_url or "workers.dev" in direct_url:
+                print(f"✅ Sudah ter-ingest (Proxy URL Ditemukan).")
+                continue
+
+            print(f"🔗 Direct URL: {direct_url[:50]}... [{provider_id}]")
+            print(f"⏳ Mengeksekusi Ingestion Engine (Download -> Slice -> Upload Telegram)...")
             
-            if direct_url and "tg-proxy" not in direct_url:
-                success = await engine.process_episode(
-                    episode_id=ep_id,
-                    anilist_id=aid,
-                    provider_id=provider_id,
-                    episode_number=ep_num,
-                    direct_video_url=direct_url
-                )
-                print(f"✅ Ingest Result {aid} Ep {ep_num}: {success}")
+            # Hard Stitch (Tunggu sampai selesai 100% baru lanjut ke episode berikutnya)
+            success = await engine.process_episode(
+                episode_id=ep_id,
+                anilist_id=aid,
+                provider_id=provider_id,
+                episode_number=ep_num,
+                direct_video_url=direct_url
+            )
+            
+            if success:
+                print(f"🎉 SUKSES: Episode {ep_num} berhasil disimpan permanen ke Telegram!")
             else:
-                print(f"⚠️ Invalid URL atau sudah Proxy: {direct_url[:50]}...")
+                print(f"❌ GAGAL: Terjadi kesalahan saat memproses episode {ep_num}.")
         else:
             print(f"❌ Sumber mentah tidak ditemukan untuk {aid} Ep {ep_num}")
+
+        # Jeda pendinginan agar server/Telegram API tidak overload
+        print("⏳ Jeda pendinginan 10 detik sebelum episode selanjutnya...")
+        await asyncio.sleep(10)
+
+    print("-" * 50)
+    print("🎉 Seluruh proses antrean batch selesai!")
 
     if should_disconnect:
         await db.disconnect()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingest pending episodes")
-    parser.add_argument("--limit", type=int, default=10, help="Max episodes to process")
+    parser.add_argument("--limit", type=int, default=50, help="Max episodes to process")
     args = parser.parse_args()
     
     asyncio.run(ingest_pending(args.limit))
