@@ -345,6 +345,14 @@ async def debug_counts():
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/v2/admin/debug-db")
+async def debug_db():
+    try:
+        rows = await database.fetch_all("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")
+        return {"tables": [r["table_name"] for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.head("/healthz", tags=["System"])
 @app.get("/healthz", tags=["System"])
 async def health():
