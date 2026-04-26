@@ -87,7 +87,8 @@ class TelegramUploader:
 
         file_size = os.path.getsize(file_path)
         endpoint = "sendVideo" if file_size > 10_000_000 else "sendDocument"
-        url = f"https://api.telegram.org/bot{bot_token}/{endpoint}"
+        tg_proxy = os.getenv("TG_PROXY_BASE_URL", "https://api.telegram.org")
+        url = f"{tg_proxy}/bot{bot_token}/{endpoint}"
         
         await _debug(f"Uploading {os.path.basename(file_path)} using bot {bot_token[-4:]}...")
         
@@ -96,7 +97,18 @@ class TelegramUploader:
                 await _debug(f"Attempt {attempt+1}: using shared connection pool to telegram API")
                 with open(file_path, "rb") as f:
                     file_key = "video" if endpoint == "sendVideo" else "document"
-                    files = {file_key: (os.path.basename(file_path), f)}
+                    
+                    mime_type = None
+                    if file_path.endswith(".m3u8"):
+                        mime_type = "application/vnd.apple.mpegurl"
+                    elif file_path.endswith(".ts"):
+                        mime_type = "video/MP2T"
+                        
+                    if mime_type:
+                        files = {file_key: (os.path.basename(file_path), f, mime_type)}
+                    else:
+                        files = {file_key: (os.path.basename(file_path), f)}
+                        
                     data = {"chat_id": self.chat_id}
                     
                     response = await client.post(url, data=data, files=files)
@@ -138,7 +150,7 @@ class TelegramUploader:
             
             bot = random.choice(self.bot_pool)
             bot_token = bot["token"]
-            url = f"https://api.telegram.org/bot{bot_token}/{endpoint}"
+            url = f"{tg_proxy}/bot{bot_token}/{endpoint}"
 
         return None
 
