@@ -96,48 +96,56 @@ async def ingest_pending(limit: int = 5000, shard_id: int = 0, total_shards: int
         try:
             sources_response = await get_cached_stream(aid, ep_num)
             if sources_response and "sources" in sources_response and len(sources_response["sources"]) > 0:
-                direct_url = ""
-                provider_id = "unknown"
-                
+                # Kumpulkan semua stream yang valid
+                valid_streams = []
                 for s in sources_response["sources"]:
-                    if s.get("quality") == "720p" and s.get("type") in ["mp4", "direct", "hls", "mp4 (direct)", "hls (direct)"]:
-                        direct_url = s.get("raw_url") or s.get("url", "")
-                        provider_id = s.get("source", "unknown")
-                        break
+                    if s.get("type") in ["mp4", "direct", "hls", "mp4 (direct)", "hls (direct)"]:
+                        d_url = s.get("raw_url") or s.get("url", "")
+                        p_id = s.get("source", "unknown")
+                        if d_url:
+                            valid_streams.append({"url": d_url, "provider": p_id, "quality": s.get("quality")})
+                
+                # Sortir agar 720p didahulukan
+                valid_streams.sort(key=lambda x: 0 if x["quality"] == "720p" else 1)
 
-                if not direct_url:
-                    for s in sources_response["sources"]:
-                        if s.get("type") in ["mp4", "direct", "hls", "mp4 (direct)", "hls (direct)"]:
-                            direct_url = s.get("raw_url") or s.get("url", "")
-                            provider_id = s.get("source", "unknown")
-                            break
-
-                if not direct_url:
+                if not valid_streams:
                     await _log_to_redis(f"⚠️ Melewati Ep {ep_num} karena tidak memiliki Direct Stream murni (hanya ada Iframe).")
                     continue
 
-                if "tg-proxy" in direct_url or "workers.dev" in direct_url:
-                    await _log_to_redis(f"✅ Sudah ter-ingest (Proxy URL Ditemukan).")
-                    continue
+                success = False
+                for stream in valid_streams:
+                    direct_url = stream["url"]
+                    provider_id = stream["provider"]
+                    
+                    if "tg-proxy" in direct_url or "workers.dev" in direct_url:
+                        await _log_to_redis(f"✅ Sudah ter-ingest (Proxy URL Ditemukan).")
+                        success = True
+                        break
 
-                await _log_to_redis(f"🔗 Direct URL: {direct_url[:50]}... [{provider_id}]")
-                await _log_to_redis(f"⏳ Mengeksekusi Ingestion Engine (Download -> Slice -> Upload Telegram)...")
-                
-                success = await engine.process_episode(
-                    episode_id=ep_id,
-                    anilist_id=aid,
-                    provider_id=provider_id,
-                    episode_number=ep_num,
-                    direct_video_url=direct_url,
-                    anime_title=title
-                )
-                
-                if success:
-                    await _log_to_redis(f"🎉 SUKSES: Episode {ep_num} berhasil disimpan permanen ke Telegram!")
-                    await _send_telegram_alert(f"✅ <b>INGEST SUCCESS</b>\n📺 {title} - Ep {ep_num}\nProvider: <code>{provider_id}</code>")
-                else:
-                    await _log_to_redis(f"❌ GAGAL: Terjadi kesalahan saat memproses episode {ep_num}.")
+                    await _log_to_redis(f"🔗 Mencoba URL: {direct_url[:50]}... [{provider_id}]")
+                    await _log_to_redis(f"⏳ Mengeksekusi Ingestion Engine (Download -> Slice -> Upload Telegram)...")
+                    
+                    is_ok = await engine.process_episode(
+                        episode_id=ep_id,
+                        anilist_id=aid,
+                        provider_id=provider_id,
+                        episode_number=ep_num,
+                        direct_video_url=direct_url,
+                        anime_title=title
+                    )
+                    
+                    if is_ok:
+                        success = True
+                        await _log_to_redis(f"🎉 SUKSES: Episode {ep_num} berhasil disimpan permanen ke Telegram!")
+                        await _send_telegram_alert(f"✅ <b>INGEST SUCCESS</b>\n📺 {title} - Ep {ep_num}\nProvider: <code>{provider_id}</code>")
+                        break
+                    else:
+                        await _log_to_redis(f"⚠️ Gagal memproses stream dari {provider_id}, mencoba stream berikutnya...")
+
+                if not success:
+                    await _log_to_redis(f"❌ GAGAL: Semua stream direct gagal diproses untuk episode {ep_num}.")
                     await _send_telegram_alert(f"❌ <b>INGEST FAILED</b>\n📺 {title} - Ep {ep_num}")
+                    
             else:
                 await _log_to_redis(f"❌ Sumber mentah tidak ditemukan untuk {aid} Ep {ep_num}")
                 await _send_telegram_alert(f"⚠️ <b>NO SOURCE</b>\n📺 {title} - Ep {ep_num}")
