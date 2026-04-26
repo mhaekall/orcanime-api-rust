@@ -8,13 +8,24 @@ from services.reconciler import reconciler
 from services.db import upsert_anime_db
 from services.anilist import fetch_anilist_info_by_id
 from utils.distributed_lock import DistributedLock
-from services.cache import upstash_get, upstash_set, upstash_del
+from services.cache import upstash_get, upstash_set, upstash_del, client, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
 
 TELEGRAM_BOT_TOKEN_2 = os.getenv("TELEGRAM_BOT_TOKEN_2")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+async def log_to_redis(message: str):
+    try:
+        url = f"{UPSTASH_REDIS_REST_URL}/lpush/hf_ingest_logs"
+        headers = {"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}", "Content-Type": "application/json"}
+        await client.post(url, headers=headers, json=[message])
+        await client.get(f"{UPSTASH_REDIS_REST_URL}/ltrim/hf_ingest_logs/0/49", headers=headers)
+    except:
+        pass
+
 async def send_tele_alert(message: str):
+    await log_to_redis(f"🔔 [TELEGRAM] {message}")
     if not TELEGRAM_BOT_TOKEN_2 or not TELEGRAM_CHAT_ID:
+        await log_to_redis(f"❌ [TeleAlert] Token atau Chat ID kosong: {TELEGRAM_BOT_TOKEN_2} | {TELEGRAM_CHAT_ID}")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage"
     payload = {
@@ -24,12 +35,16 @@ async def send_tele_alert(message: str):
         "disable_web_page_preview": True
     }
     try:
-        async with httpx.AsyncClient() as client:
-            await client.post(url, json=payload, timeout=10)
+        async with httpx.AsyncClient() as client_http:
+            res = await client_http.post(url, json=payload, timeout=10)
+            if res.status_code != 200:
+                await log_to_redis(f"❌ [TeleAlert] API Error {res.status_code}: {res.text}")
     except Exception as e:
+        await log_to_redis(f"❌ [TeleAlert] Gagal kirim pesan: {e}")
         print(f"[TeleAlert] Gagal kirim pesan: {e}")
 
 async def run_10_hours_sync():
+    await log_to_redis("🚀 [10H-Sync] Task dipanggil!")
     lock = DistributedLock(
         upstash_get_fn=upstash_get,
         upstash_set_fn=upstash_set,
