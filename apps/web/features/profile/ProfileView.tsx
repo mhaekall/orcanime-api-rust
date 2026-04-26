@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useCollection } from "@/core/hooks/use-collection";
 import { useWatchHistory } from "@/core/hooks/use-watch-history";
 import { useMounted } from "@/core/hooks/use-mounted";
-import { LogOut, ChevronRight, Crown, Shield, FileText, Copy, Mail, Hash, User as UserIcon } from "lucide-react";
+import { LogOut, ChevronRight, Crown, Shield, FileText, Copy, Mail, Hash, User as UserIcon, RefreshCw } from "lucide-react";
 import { authClient } from "@/core/lib/auth-client";
 import { AuthModal } from "@/ui/overlays/AuthModal";
 import Link from "next/link";
