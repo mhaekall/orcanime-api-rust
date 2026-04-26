@@ -1,0 +1,28 @@
+name: Keep-Alive & Trigger Workers
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  ping-and-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Healthz
+        run: |
+          echo "Pinging HF Space Healthz to keep it awake..."
+          curl -s -f -m 10 "https://jonyyyyyyyu-anime-scraper-api.hf.space/healthz" || echo "Healthz ping failed"
+
+      - name: Trigger 10H Sync
+        run: |
+          echo "Triggering 10H Sync..."
+          curl -X POST -s -f -m 15 -H "x-admin-key: ${{ secrets.ADMIN_API_KEY }}" \
+          "https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/admin/trigger-10h-sync" || echo "10H trigger failed"
+
+      - name: Trigger Auto Ingest (Shard 0)
+        run: |
+          echo "Triggering Auto Ingest..."
+          curl -s -f -m 15 -H "x-admin-key: ${{ secrets.ADMIN_API_KEY }}" \
+          "https://jonyyyyyyyu-anime-scraper-api.hf.space/api/v2/admin/trigger-auto-ingest?shard_id=0&total_shards=1" || echo "Ingest trigger failed"
