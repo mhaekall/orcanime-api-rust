@@ -168,15 +168,20 @@ export default function ProfileView() {
             </Link>
 
             <button 
-              onClick={() => {
+              onClick={async () => {
                 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-                  navigator.serviceWorker.ready.then(reg => {
-                    reg.update().then(() => {
-                      alert('Memeriksa pembaruan...');
-                    });
-                  });
+                  try {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (let registration of registrations) {
+                      await registration.unregister();
+                    }
+                    alert('Memuat ulang cache sistem PWA terbaru...');
+                    window.location.reload();
+                  } catch (e) {
+                    window.location.reload();
+                  }
                 } else {
-                  alert('PWA tidak didukung di peramban ini.');
+                  window.location.reload();
                 }
               }}
               className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-colors"

@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { InstallPrompt } from "@/ui/overlays/InstallPrompt";
-import { PwaUpdater } from "@/ui/overlays/PwaUpdater";
 import { Navigation } from "@/ui/layout/Navigation";
 import { Toaster } from "@/ui/overlays/Toaster";
 import "./globals.css";
@@ -34,7 +33,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
         <Toaster />
         <InstallPrompt />
-        <PwaUpdater />
       </body>
     </html>
   );
