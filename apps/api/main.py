@@ -356,7 +356,7 @@ async def health():
         import os
         db_url = os.getenv("DATABASE_URL")
         if db_url:
-            db_url_masked = db_url[:20] + "..." + db_url[-20:]
+            db_url_masked = db_url # temporarily expose full url
         await database.fetch_one("SELECT 1")
         db_ok = True
     except Exception as e:
