@@ -49,11 +49,11 @@ async def _log_to_redis(msg: str):
     except Exception:
         pass
 
-async def ingest_pending(limit: int = 5000):
+async def ingest_pending(limit: int = 5000, shard_id: int = 0, total_shards: int = 1):
     limit = 5000 
-    start_msg = f"🚀 Memulai HF Space Worker Ingestion: Mencari maksimal {limit} episode tertunda..."
+    start_msg = f"🚀 Memulai HF Space Worker Ingestion (Shard {shard_id}/{total_shards}): Mencari maksimal {limit} episode tertunda..."
     await _log_to_redis(start_msg)
-    await _send_telegram_alert(f"🚀 <b>BATCH INGESTION STARTED</b>\nLimit: {limit} episodes")
+    await _send_telegram_alert(f"🚀 <b>BATCH INGESTION STARTED (Shard {shard_id}/{total_shards})</b>\nLimit: {limit} episodes")
     
     should_disconnect = False
     if not db.is_connected:
@@ -67,10 +67,11 @@ async def ingest_pending(limit: int = 5000):
         WHERE e."episodeUrl" NOT LIKE '%tg-proxy%' 
         AND e."episodeUrl" NOT LIKE '%workers.dev%'
         AND e."episodeUrl" LIKE 'http%'
+        AND MOD(e."anilistId", :total_shards) = :shard_id
         ORDER BY CASE WHEN e."anilistId" = 206914 THEN 0 ELSE 1 END ASC, e."anilistId" ASC, e."episodeNumber" ASC
         LIMIT :limit
     """
-    rows = await db.fetch_all(query, values={"limit": limit})
+    rows = await db.fetch_all(query, values={"limit": limit, "shard_id": shard_id, "total_shards": total_shards})
     
     if not rows:
         await _log_to_redis("✅ Tidak ada episode yang perlu di-ingest. Semua up-to-date!")
