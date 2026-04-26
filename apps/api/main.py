@@ -287,6 +287,12 @@ async def trigger_mass_resync(background_tasks: BackgroundTasks):
     background_tasks.add_task(mass_resync)
     return {"success": True, "message": "Mass resync metadata started in background"}
 
+@app.post("/api/v2/admin/trigger-10h-sync", tags=["Admin"], dependencies=[Depends(verify_admin_key)])
+async def trigger_10h_sync_endpoint(background_tasks: BackgroundTasks):
+    from scripts.sync_10_hours_bg import run_10_hours_sync
+    background_tasks.add_task(run_10_hours_sync)
+    return {"success": True, "message": "10-Hour Sync pipeline started in background on HF Space"}
+
 
 @app.post("/api/v2/admin/backfill-mal-id", tags=["Admin"], dependencies=[Depends(verify_admin_key)])
 async def trigger_backfill_mal_id(background_tasks: BackgroundTasks):
