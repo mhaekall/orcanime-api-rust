@@ -182,16 +182,42 @@ async def _run_sync_logic():
             sync_msg = f"✅ <b>[SYNCED]</b> {title}\nBerhasil menarik: <b>{res.get('added', 0)} eps baru</b> & {res.get('updated', 0)} eps update."
             print(sync_msg.replace("<b>", "").replace("</b>", ""))
             await send_tele_alert(sync_msg)
+            return True
         else:
             fail_msg = f"⚠️ <b>[FAILED]</b> Tidak menemukan sumber episode valid untuk {title}."
             print(fail_msg.replace("<b>", "").replace("</b>", ""))
             await send_tele_alert(fail_msg)
+            return False
 
+    success_count = 0
+    fail_count = 0
+    
     for i, r in enumerate(rows):
-        await process_anime(r)
+        is_success = await process_anime(r)
+        if is_success:
+            success_count += 1
+        else:
+            fail_count += 1
+            
+        total_processed = i + 1
+        if total_processed % 100 == 0:
+            success_rate = round((success_count / total_processed) * 100, 2)
+            recap_msg = (
+                f"📊 <b>[10H-SYNC RECAP]</b>\n"
+                f"Telah memproses: {total_processed} / {len(rows)} Anime\n"
+                f"✅ Berhasil Ditarik: {success_count}\n"
+                f"❌ Gagal/Tidak Ada: {fail_count}\n"
+                f"📈 Success Rate: {success_rate}%"
+            )
+            await send_tele_alert(recap_msg)
+            
         if i < len(rows) - 1:
             await asyncio.sleep(15) 
         
-    end_msg = "🎉 <b>[10H-SYNC] COMPLETE:</b> Selesai mencari 2400 anime."
+    end_msg = (
+        f"🎉 <b>[10H-SYNC] COMPLETE:</b> Selesai mencari {len(rows)} anime.\n"
+        f"✅ Total Berhasil: {success_count}\n"
+        f"❌ Total Gagal: {fail_count}"
+    )
     print(end_msg.replace("<b>", "").replace("</b>", ""))
     await send_tele_alert(end_msg)
