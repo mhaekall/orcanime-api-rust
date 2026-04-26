@@ -150,6 +150,7 @@ async def _single_stream_download(url: str, output_path: str) -> bool:
     headers_str = "".join([f"{k}: {v}\r\n" for k, v in headers.items()])
     command = [
         "ffmpeg", "-y",
+        "-rw_timeout", "15000000",
         "-headers", headers_str,
         "-i", url,
         "-c", "copy",
@@ -161,9 +162,18 @@ async def _single_stream_download(url: str, output_path: str) -> bool:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await process.communicate()
+    try:
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0)
+    except asyncio.TimeoutError:
+        logger.error("[Fetcher] FFmpeg timeout after 300s, killing process...")
+        try:
+            process.kill()
+        except:
+            pass
+        return False
+        
     if process.returncode != 0:
-        logger.error(f"[Fetcher] FFmpeg gagal: {stderr.decode()[-400:]}")
+        logger.error(f"[Fetcher] FFmpeg gagal: {stderr.decode()[-400:] if stderr else 'No stderr'}")
         return False
     return True
 
