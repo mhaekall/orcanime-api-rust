@@ -87,6 +87,7 @@ async def _run_sync_logic():
             SELECT 1 FROM episodes e WHERE e."anilistId" = m."anilistId"
         )
         AND m."popularity" IS NOT NULL
+        AND (m."updatedAt" IS NULL OR m."updatedAt" < NOW() - INTERVAL '12 hours')
         ORDER BY 
             CASE WHEN m.status = 'RELEASING' THEN 0 ELSE 1 END,
             m.popularity DESC NULLS LAST
