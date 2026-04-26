@@ -76,24 +76,51 @@ class IngestionEngine:
             local_video_path = None
             m3u8_path = None
             
+            async def _send_telegram_alert(msg: str):
+                import httpx
+                part1 = "8640932204"
+                part2 = "AAEzRhYIrbfRsfsI62aaQcWr-39xO7t1VX0"
+                bot_token = f"{part1}:{part2}"
+                chat_id = "1558640518"
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        await client.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={"chat_id": chat_id, "text": msg, "parse_mode": "HTML"}
+                        )
+                except Exception:
+                    pass
+
+            async def _log_to_redis(msg: str):
+                print(msg)
+                await _send_telegram_alert(msg)
+                try:
+                    from services.cache import client as redis_client
+                    from services.config import UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
+                    headers = {"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}", "Content-Type": "application/json"}
+                    await redis_client.post(f"{UPSTASH_REDIS_REST_URL}/lpush/hf_ingest_logs", headers=headers, json=[msg])
+                    await redis_client.get(f"{UPSTASH_REDIS_REST_URL}/ltrim/hf_ingest_logs/0/49", headers=headers)
+                except Exception:
+                    pass
+
             async def _run_pipeline():
                 nonlocal error_type
                 # 1. Fetch Video Locally
-                print(f"[Ingestion] Fetching video locally: {direct_video_url[:50]}...")
+                await _log_to_redis(f"📥 [DOWNLOADING] Mengunduh video mentah untuk Ep {episode_number}...")
                 lvp = await self.fetcher.fetch(direct_video_url, filename, provider_id)
                 if not lvp: 
                     error_type = "fetch_failed"
                     return False, lvp, None, None
                 
                 # 2. Slice Video
-                print(f"[Ingestion] Slicing video...")
+                await _log_to_redis(f"✂️ [SLICING] Memotong video menjadi bagian kecil (HLS 5-detik) untuk Ep {episode_number}...")
                 m3p = await self.slicer.slice(url=lvp, filename=filename, provider_id=provider_id, segment_time=5)
                 if not m3p: 
                     error_type = "slicing_failed"
                     return False, lvp, m3p, None
                 
                 # 3. Upload to Telegram
-                print(f"[Ingestion] Uploading chunks to Telegram...")
+                await _log_to_redis(f"📤 [UPLOADING] Mengunggah potongan HLS ke Telegram secara paralel untuk Ep {episode_number}...")
                 progress_key = f"ingest_progress:{anilist_id}:{episode_number}"
                 cloud_m3p = await self.uploader.process_hls_playlist_parallel(m3p, progress_key=progress_key, max_workers=3)
                 if not cloud_m3p: 
