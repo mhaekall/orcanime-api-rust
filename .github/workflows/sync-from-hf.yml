@@ -1,0 +1,33 @@
+name: Sync FROM Hugging Face
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Berjalan setiap jam
+  workflow_dispatch:      # Bisa dipicu manual dari tab Actions
+
+jobs:
+  sync-from-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.email "deploy@orca.sys"
+          git config user.name "Orca Deploy Bot"
+
+      - name: Pull from HF and Push to GitHub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Tambahkan HF sebagai remote sementara
+          git remote add hf https://orcanime:$HF_TOKEN@huggingface.co/spaces/orcanime/orcanime-api-rust
+          
+          # Tarik perubahan dari HF
+          git pull hf main --rebase --autostash
+          
+          # Push balik ke GitHub jika ada perubahan
+          git push origin main
