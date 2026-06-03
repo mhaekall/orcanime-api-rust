@@ -208,25 +208,27 @@ impl AnilistService {
                         }
 
                         // Handle Titles
+                        // Preserve original romaji from Anilist for nativeTitle
+                        let original_romaji = obj.get("title").and_then(|v| v.as_object()).and_then(|t| t.get("romaji")).cloned();
+
                         // 1. Primary Title (cleanTitle / canonicalTitle) goes to title.english and title.romaji
                         let c_title = enrich_obj.get("canonicalTitle").and_then(|v| v.as_str())
                             .or_else(|| enrich_obj.get("cleanTitle").and_then(|v| v.as_str()));
                             
                         if let Some(c_title_str) = c_title {
                             if !c_title_str.is_empty() {
-                                obj.insert("cleanTitle".to_string(), json!(c_title_str));
+                                let c_title_val = json!(c_title_str);
+                                obj.insert("cleanTitle".to_string(), c_title_val.clone());
                                 if let Some(title_obj) = obj.get_mut("title").and_then(|v| v.as_object_mut()) {
-                                    title_obj.insert("english".to_string(), json!(c_title_str));
-                                    title_obj.insert("romaji".to_string(), json!(c_title_str));
+                                    title_obj.insert("english".to_string(), c_title_val.clone());
+                                    title_obj.insert("romaji".to_string(), c_title_val);
                                 }
                             }
                         }
 
-                        // 2. Secondary Title (nativeTitle) should be AniList's Romaji Title (not Kanji)
-                        if let Some(title_obj) = obj.get("title").and_then(|v| v.as_object()) {
-                            if let Some(romaji) = title_obj.get("romaji") {
-                                obj.insert("nativeTitle".to_string(), romaji.clone());
-                            }
+                        // 2. Secondary Title (nativeTitle) should be AniList's original Romaji Title (not Kanji)
+                        if let Some(romaji) = original_romaji {
+                            obj.insert("nativeTitle".to_string(), romaji);
                         }
                     }
                     obj.insert("detailUrl".to_string(), json!(format!("/anime/{}", anilist_id)));
