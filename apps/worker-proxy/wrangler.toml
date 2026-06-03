@@ -1,7 +1,0 @@
-name = "tg-proxy"
-main = "src/index.js"
-compatibility_date = "2023-10-16"
-
-[[kv_namespaces]]
-binding = "FILE_CACHE"
-id = "bcda6844249d4c4a862c04f3ba21d77f"
