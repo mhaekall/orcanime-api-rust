@@ -14,26 +14,6 @@ pub fn create_router() -> Router<Arc<AppState>> {
         .route("/id/:id", get(get_by_id))
         .route("/search", get(search_by_title))
         .route("/debug/enrich/:id", get(debug_enrich))
-        .route("/debug/db", get(debug_db))
-}
-
-async fn debug_db(
-    State(state): State<Arc<AppState>>,
-) -> Json<Value> {
-    let row = sqlx::query!("SELECT \"anilistId\", \"cleanTitle\" FROM anime_metadata LIMIT 5")
-        .fetch_all(&state.db)
-        .await;
-
-    match row {
-        Ok(rows) => {
-            let mut res = Vec::new();
-            for r in rows {
-                res.push(json!({"id": r.anilistId, "title": r.cleanTitle}));
-            }
-            Json(json!({"success": true, "data": res}))
-        },
-        Err(e) => Json(json!({"success": false, "error": e.to_string()})),
-    }
 }
 
 async fn debug_enrich(
