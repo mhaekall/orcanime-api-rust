@@ -11,7 +11,7 @@ pub async fn get_anime_enrichment(pool: &PgPool, anilist_id: i64) -> Result<Valu
                m."nativeTitle",
                c.title_preferred as "canonicalTitle", 
                c.air_schedule_wib as "canonicalSchedule",
-               c.status as "localStatus"
+               m.status as "localStatus"
         FROM anime_metadata m
         LEFT JOIN canonical_anime c ON m."anilistId" = c.anilist_id
         LEFT JOIN anime_mappings am ON m."anilistId" = am."anilistId"
